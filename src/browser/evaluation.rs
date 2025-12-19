@@ -1,5 +1,8 @@
 use anyhow::{anyhow, bail};
-use chromiumoxide::{cdp::js_protocol::debugger, Page};
+use chromiumoxide::{
+    cdp::js_protocol::{debugger, runtime},
+    Page,
+};
 use serde::de::DeserializeOwned;
 use serde_json as json;
 
@@ -24,10 +27,21 @@ pub async fn evaluate_expression_in_debugger<Output: DeserializeOwned>(
     if let Some(exception) = returns.exception_details {
         bail!("evaluate_function failed: {:?}", exception)
     } else {
-        json::from_value(returns.result.value.clone().ok_or(anyhow!(
-            "no return value from function call: {:?}",
-            returns.result
-        ))?)
+        match returns.result.value.clone() {
+            Some(value) => json::from_value(value),
+            None => {
+                if let Some(runtime::RemoteObjectSubtype::Null) =
+                    returns.result.subtype
+                {
+                    json::from_value(json::Value::Null)
+                } else {
+                    bail!(
+                        "no return value from function call: {:?}",
+                        returns.result
+                    );
+                }
+            }
+        }
         .map_err(|err| anyhow!(err))
     }
 }

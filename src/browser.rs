@@ -134,7 +134,7 @@ impl Browser {
         });
 
         let (sender, receiver) =
-            channel::<state_machine::Event<BrowserState>>(16);
+            channel::<state_machine::Event<BrowserState>>(1);
 
         let (actions_sender, _) = channel::<BrowserAction>(1);
 
@@ -220,7 +220,11 @@ impl state_machine::StateMachine for Browser {
     type Action = BrowserAction;
 
     async fn initiate(&mut self) -> anyhow::Result<()> {
-        self.page.goto(self.origin.to_string()).await?;
+        let page = self.page.clone();
+        let origin = self.origin.to_string();
+        spawn(async move {
+            let _ = page.goto(origin).await;
+        });
         Ok(())
     }
 
@@ -518,6 +522,7 @@ async fn run_state_machine(
                                     {
                                         object
                                             .get("value")
+                                            .or(object.get("description"))
                                             .map(|value| value.clone())
                                             .or(Some(json::Value::Object(
                                                 object,
