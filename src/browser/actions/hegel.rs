@@ -1,7 +1,9 @@
 use hegel::r#gen::{floats, just, one_of, BoxedGenerator, Generate};
 use serde::Deserialize;
 
-use crate::browser::actions::{tree::Tree, BrowserAction, Timeout};
+use crate::browser::actions::{
+    tree::Tree, BrowserAction, BrowserActionCandidate, Timeout, TypeTextFormat,
+};
 
 pub fn generate_action<'a>(
     action: BrowserActionCandidate,
@@ -18,9 +20,19 @@ pub fn generate_action<'a>(
             point: point.clone(),
         })
         .boxed(),
-        BrowserActionCandidate::TypeText => hegel::r#gen::text()
-            .map(|text| BrowserAction::TypeText { text })
-            .boxed(),
+        BrowserActionCandidate::TypeText { format } => match format {
+            TypeTextFormat::Text => hegel::r#gen::text()
+                .map(|text| BrowserAction::TypeText { text })
+                .boxed(),
+            TypeTextFormat::Email => hegel::r#gen::emails()
+                .map(|text| BrowserAction::TypeText { text })
+                .boxed(),
+            TypeTextFormat::Number => hegel::r#gen::integers::<u16>()
+                .map(|n| BrowserAction::TypeText {
+                    text: format!("{}", n),
+                })
+                .boxed(),
+        },
         BrowserActionCandidate::PressKey { .. } => one_of(vec![
             hegel::r#gen::just::<u8>(13).boxed(),
             hegel::r#gen::just::<u8>(27).boxed(),

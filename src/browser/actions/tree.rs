@@ -7,6 +7,7 @@ pub enum Tree<T> {
 }
 
 impl<T> Tree<T> {
+    #[allow(unused)]
     pub fn map<U>(&self, f: fn(&T) -> U) -> Tree<U> {
         match self {
             Tree::Leaf(x) => Tree::Leaf(f(x)),
