@@ -7,6 +7,15 @@ pub enum Tree<T> {
 }
 
 impl<T> Tree<T> {
+    pub fn map<U>(&self, f: fn(&T) -> U) -> Tree<U> {
+        match self {
+            Tree::Leaf(x) => Tree::Leaf(f(x)),
+            Tree::Branch(branches) => Tree::Branch(
+                branches.iter().map(|branch| branch.map(f)).collect(),
+            ),
+        }
+    }
+
     fn prune_to_size(&mut self) -> usize {
         match self {
             Tree::Leaf(_) => 1,
