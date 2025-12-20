@@ -8,16 +8,10 @@ use serde::Serialize;
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json as json;
 
-use crate::browser::actions::keys::key_name;
-use crate::browser::actions::tree::{Tree, Weight};
+use crate::browser::keys::key_name;
 use crate::browser::state::BrowserState;
 use crate::geometry::Point;
-
-#[cfg(feature = "hegel")]
-pub mod hegel;
-pub mod keys;
-pub mod random;
-pub mod tree;
+use crate::tree::{Tree, Weight};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BrowserActionCandidate {

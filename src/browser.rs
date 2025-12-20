@@ -26,7 +26,11 @@ use crate::browser::state::{BrowserState, ConsoleEntry, Exception};
 use crate::state_machine;
 
 pub mod actions;
-mod evaluation;
+pub mod evaluation;
+#[cfg(feature = "hegel")]
+pub mod hegel;
+pub mod keys;
+pub mod random;
 pub mod state;
 
 #[derive(Debug)]

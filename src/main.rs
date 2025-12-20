@@ -8,6 +8,7 @@ mod browser;
 mod geometry;
 mod runner;
 mod state_machine;
+mod tree;
 mod url;
 
 #[derive(Parser)]

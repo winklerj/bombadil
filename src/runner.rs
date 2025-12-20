@@ -1,10 +1,10 @@
 use std::time::UNIX_EPOCH;
 
-#[cfg(feature = "hegel")]
-use crate::browser::actions::hegel;
-#[cfg(not(feature = "hegel"))]
-use crate::browser::actions::random;
 use crate::browser::actions::{available_actions, Timeout};
+#[cfg(feature = "hegel")]
+use crate::browser::hegel;
+#[cfg(not(feature = "hegel"))]
+use crate::browser::random;
 use crate::state_machine::{self, StateMachine};
 use ::url::Url;
 use anyhow::bail;

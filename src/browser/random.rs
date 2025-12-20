@@ -1,11 +1,9 @@
+use crate::browser::actions::{BrowserAction, BrowserActionCandidate, Timeout};
+use crate::tree::Tree;
 use rand::{
     self,
     distr::{Alphanumeric, SampleString},
     seq::IndexedRandom,
-};
-
-use crate::browser::actions::{
-    tree::Tree, BrowserAction, BrowserActionCandidate, Timeout,
 };
 
 pub fn generate_action<R: rand::Rng>(
