@@ -2,14 +2,7 @@ use ::url::Url;
 use clap::Parser;
 use tempfile::TempDir;
 
-use crate::{browser::BrowserOptions, runner::run_test};
-
-mod browser;
-mod geometry;
-mod runner;
-mod state_machine;
-mod tree;
-mod url;
+use antithesis_browser::{browser::BrowserOptions, runner::run_test};
 
 #[derive(Parser)]
 #[command(version, about)]

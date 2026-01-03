@@ -8,6 +8,10 @@ exclude = []
 name = "antithesis_browser"
 path = "src/main.rs"
 
+[lib]
+name = "antithesis_browser"
+path = "src/lib.rs"
+
 [dependencies]
 anyhow = { version = "1.0.99", features = ["backtrace"] }
 chromiumoxide = "0.8.0"
@@ -27,9 +31,11 @@ tokio = "1.48.0"
 tokio-stream = { version = "0.1.17", features = ["sync"] }
 url = "2.5.7"
 
-[dev-dependencies]
-
 [build-dependencies]
 
 [features]
 hegel = ["dep:hegel"]
+
+[dev-dependencies]
+axum = "0.8.8"
+tower-http = { version = "0.6.8", features = ["fs"] }

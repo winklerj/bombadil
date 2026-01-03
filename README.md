@@ -19,3 +19,9 @@ See debug logs:
 ```bash
 RUST_LOG=antithesis_browser=debug cargo run -- test https://example.com --headless
 ```
+
+## Integration tests
+
+```bash
+cargo test --test integration_tests
+```
