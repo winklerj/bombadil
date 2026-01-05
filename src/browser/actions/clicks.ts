@@ -1,5 +1,6 @@
-function clicks() {
-  function clickable_point(element) {
+result = (() => {
+
+  function clickable_point(element: Element) {
     // naive calculation of center of element
     const rect = element.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
@@ -9,20 +10,30 @@ function clicks() {
     }
   }
 
-  function is_visible(element) {
+  function is_visible(element: Element) {
     const style = window.getComputedStyle(element);
-    return style.display !== "none" && style.visibility !== "hidden" && parseFloat(style.opacity || "1")  > 0.0;
+    return style.display !== "none" && style.visibility !== "hidden" && parseFloat(style.opacity || "1") > 0.0;
   }
 
-  function contains(rect, point) {
-    return point.x >= rect.x && 
-      point.x <= (rect.x + rect.width) && 
-      point.y >= rect.y && 
+  type Point = {
+    x: number,
+    y: number,
+  };
+
+  type Rect = Point & {
+    width: number,
+    height: number,
+  };
+
+  function contains(rect: Rect, point: Point) {
+    return point.x >= rect.x &&
+      point.x <= (rect.x + rect.width) &&
+      point.y >= rect.y &&
       point.y <= (rect.y + rect.height);
   }
 
   const clicks = [];
-  const url_current = new URL(window.location);
+  const url_current = new URL(window.location.toString());
   for (const anchor of document.querySelectorAll("a")) {
     try {
       let url;
@@ -41,7 +52,7 @@ function clicks() {
         console.debug(url, "is not an http(s) URL");
         continue;
       }
-  
+
       if (!url.origin.endsWith(url_current.origin)) {
         console.debug(url, "is not within domain", url_current.origin);
         continue;
@@ -51,7 +62,7 @@ function clicks() {
         console.debug(anchor, "is not visible");
         continue;
       }
-          
+
       const point = clickable_point(anchor);
       if (!point) {
         console.debug(anchor, "is not clickable");
@@ -83,7 +94,7 @@ function clicks() {
         console.debug(element, "is not visible");
         continue;
       }
-          
+
       const point = clickable_point(element);
       if (!point) {
         console.debug(element, "is not clickable");
@@ -109,4 +120,4 @@ function clicks() {
     }
   }
   return clicks;
-}
+})();

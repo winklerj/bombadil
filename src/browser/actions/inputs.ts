@@ -1,17 +1,17 @@
-function type_text() {
+result = (() => {
   let element = document.activeElement;
 
   if (element === undefined || element === null || element === document.body) {
     return [];
   }
 
-  if (element.tagName === "TEXTAREA") {
+  if (element instanceof HTMLTextAreaElement) {
     return [
       [1, 50, { TypeText: { format: "Text" } }],
     ];
   }
 
-  if (element.tagName === "INPUT") {
+  if (element instanceof HTMLInputElement) {
     switch (element.type) {
       case "text":
         return [
@@ -36,4 +36,4 @@ function type_text() {
   }
 
   return [];
-}
+})();

@@ -1,4 +1,4 @@
-function scrolls() {
+result = (() => {
   const scrolls = [];
 
   if (window.scrollY > 0) {
@@ -12,7 +12,7 @@ function scrolls() {
       }
     }]);
   }
-  
+
   const scroll_y_max = document.body.scrollHeight - window.innerHeight;
   const scroll_y_max_diff = scroll_y_max - window.scrollY;
   if (scroll_y_max_diff >= 1) {
@@ -27,4 +27,4 @@ function scrolls() {
     }]);
   }
   return scrolls;
-}
+})();

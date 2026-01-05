@@ -6,7 +6,6 @@ use chromiumoxide::Page;
 use include_dir::{include_dir, Dir};
 use serde::Serialize;
 use serde::{de::DeserializeOwned, Deserialize};
-use serde_json as json;
 use tokio::time::sleep;
 use url::Url;
 
@@ -174,12 +173,11 @@ impl BrowserAction {
 }
 
 static ACTIONS_DIR: Dir =
-    include_dir!("$CARGO_MANIFEST_DIR/src/browser/actions");
+    include_dir!("$CARGO_MANIFEST_DIR/target/actions");
 
-async fn run_script<Input: Into<json::Value>, Output: DeserializeOwned>(
+async fn run_script<Output: DeserializeOwned>(
     state: &BrowserState,
     name: impl Into<&str>,
-    input: Input,
 ) -> Result<Output> {
     let script_path = format!("{}.js", name.into());
     let script_file = ACTIONS_DIR
@@ -191,7 +189,7 @@ async fn run_script<Input: Into<json::Value>, Output: DeserializeOwned>(
         .ok_or(anyhow!("failed to get script contents"))?;
 
     state
-        .evaluate_function_call(script_contents, vec![input.into()])
+        .evaluate_function_call(script_contents, vec![])
         .await
         .map_err(|err| anyhow!("script call ({}) failed: {}", script_path, err))
 }
@@ -201,7 +199,7 @@ async fn run_actions_script(
     name: impl Into<&str>,
 ) -> Result<Vec<Tree<(BrowserActionCandidate, Timeout)>>> {
     let actions: Vec<(Weight, Timeout, BrowserActionCandidate)> =
-        run_script(state, name, ()).await?;
+        run_script(state, name).await?;
     Ok(actions
         .iter()
         .map(|(_weight, timeout, action)| {

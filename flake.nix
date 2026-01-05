@@ -40,6 +40,9 @@
               rust-analyzer
               rustfmt
               chromium
+              typescript
+              typescript-language-server
+              esbuild
             ];
           };
         };
