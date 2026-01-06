@@ -172,8 +172,7 @@ impl BrowserAction {
     }
 }
 
-static ACTIONS_DIR: Dir =
-    include_dir!("$CARGO_MANIFEST_DIR/target/actions");
+static ACTIONS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/target/actions");
 
 async fn run_script<Output: DeserializeOwned>(
     state: &BrowserState,

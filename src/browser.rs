@@ -153,7 +153,10 @@ impl Browser {
             emulation::SetDeviceMetricsOverrideParams::builder()
                 .width(browser_options.width)
                 .height(browser_options.height)
-                .device_scale_factor(2.0)
+                // This is currently hardcoded to whatever the unnamed original developer of this
+                // code has Wayland configured to. This is set to prevent the screenshotting from
+                // flickering the headful browser.
+                .device_scale_factor(1.5)
                 .mobile(false)
                 .scale(1)
                 .build()
