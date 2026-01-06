@@ -207,6 +207,14 @@ async fn run_actions_script(
         .collect::<Vec<_>>())
 }
 
+fn back(state: &BrowserState) -> Tree<(BrowserActionCandidate, Timeout)> {
+    if state.navigation_history.back.is_empty() {
+        Tree::Branch(vec![])
+    } else {
+        Tree::Leaf((BrowserActionCandidate::Back, Timeout::from_secs(2)))
+    }
+}
+
 pub async fn available_actions(
     origin: &Url,
     state: &BrowserState,
@@ -214,10 +222,7 @@ pub async fn available_actions(
     if state.content_type != "text/html"
         || !is_within_domain(&state.url, origin)
     {
-        return Ok(Tree::Leaf((
-            BrowserActionCandidate::Back,
-            Timeout::from_secs(2),
-        )));
+        return Ok(back(state));
     }
 
     let tree = Tree::Branch(vec![
@@ -230,9 +235,8 @@ pub async fn available_actions(
     if let Some(tree) = tree {
         Ok(tree)
     } else {
-        Ok(Tree::Branch(vec![
-            (Tree::Leaf((BrowserActionCandidate::Back, Timeout::from_secs(2)))),
-            Tree::Leaf((BrowserActionCandidate::Reload, Timeout::from_secs(1))),
-        ]))
+        back(state)
+            .prune()
+            .ok_or(anyhow!("no fallback action available"))
     }
 }

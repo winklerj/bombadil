@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use chromiumoxide::{
     cdp::{
-        browser_protocol::page::CaptureScreenshotFormat,
+        browser_protocol::page::{self, CaptureScreenshotFormat},
         js_protocol::debugger::CallFrameId,
     },
     page::ScreenshotParams,
@@ -30,10 +30,25 @@ pub struct BrowserState {
     pub title: String,
     pub content_type: String,
     pub console_entries: Vec<ConsoleEntry>,
+    pub navigation_history: NavigationHistory,
     pub exception: Option<Exception>,
 
     #[allow(unused, reason = "we'll store this later")]
     screenshot_path: PathBuf,
+}
+
+#[derive(Clone, Debug)]
+pub struct NavigationHistory {
+    pub back: Vec<NavigationEntry>,
+    pub current: NavigationEntry,
+    pub forward: Vec<NavigationEntry>,
+}
+
+#[derive(Clone, Debug)]
+pub struct NavigationEntry {
+    pub id: u32,
+    pub title: String,
+    pub url: Url,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -86,6 +101,27 @@ impl BrowserState {
         )
         .await?;
 
+        let navigation_history_result = page
+            .execute(page::GetNavigationHistoryParams {})
+            .await?
+            .result;
+
+        let navigation_entries = navigation_history_result
+            .entries
+            .iter()
+            .map(|entry| NavigationEntry {
+                id: entry.id as u32,
+                title: entry.title.clone(),
+                url: Url::parse(&entry.url)
+                    .expect("url from getNavigationHistory doesn't parse"),
+            })
+            .collect::<Vec<_>>();
+        let index = navigation_history_result.current_index as usize;
+        let navigation_history = NavigationHistory {
+            back: navigation_entries[0..index].to_vec(),
+            current: navigation_entries[index].clone(),
+            forward: navigation_entries[index..].to_vec(),
+        };
         let screenshot_content = page
             .screenshot(
                 ScreenshotParams::builder()
@@ -110,6 +146,7 @@ impl BrowserState {
             title,
             content_type,
             console_entries,
+            navigation_history,
             exception,
             screenshot_path,
         })

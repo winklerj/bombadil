@@ -142,3 +142,15 @@ async fn test_other_domain() {
     run_browser_test("other-domain", Expect::Success, Duration::from_secs(3))
         .await;
 }
+
+#[tokio::test]
+async fn test_no_action_available() {
+    run_browser_test(
+        "no-action-available",
+        Expect::Error {
+            substring: "no fallback action available",
+        },
+        Duration::from_secs(3),
+    )
+    .await;
+}
