@@ -2,6 +2,8 @@
   rustPlatform,
   pkg-config,
   gitignoreSource,
+  esbuild,
+  chromium,
 }:
 rustPlatform.buildRustPackage rec {
   pname = "antithesis_browser";
@@ -10,8 +12,13 @@ rustPlatform.buildRustPackage rec {
   src = gitignoreSource ../.;
 
   buildInputs = [ ];
-  nativeBuildInputs = [ pkg-config ];
+  nativeBuildInputs = [
+    pkg-config
+    esbuild
+    chromium
+  ];
   cargoLock = {
     lockFile = ../Cargo.lock;
   };
+  cargoTestFlags = "--bin antithesis_browser";
 }

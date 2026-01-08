@@ -60,8 +60,9 @@ async fn run_browser_test(name: &str, expect: Expect, timeout: Duration) {
         timeout,
         run_test(
             origin,
-            BrowserOptions {
+            &BrowserOptions {
                 headless: true,
+                sandbox: false,
                 user_data_directory: user_data_directory.path().to_path_buf(),
                 width: 800,
                 height: 600,

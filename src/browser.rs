@@ -1,5 +1,5 @@
 use anyhow::{anyhow, bail, Result};
-use chromiumoxide::browser::HeadlessMode;
+use chromiumoxide::browser::{BrowserConfigBuilder, HeadlessMode};
 use chromiumoxide::cdp::browser_protocol::page::{
     self, ClientNavigationReason, FrameId, NavigationType,
 };
@@ -97,6 +97,7 @@ pub struct BrowserOptions {
     pub user_data_directory: PathBuf,
     pub width: u16,
     pub height: u16,
+    pub sandbox: bool,
 }
 
 pub struct Browser {
@@ -111,21 +112,9 @@ pub struct Browser {
 impl Browser {
     pub async fn new(
         origin: Url,
-        browser_options: BrowserOptions,
+        browser_options: &BrowserOptions,
     ) -> Result<Self> {
-        let browser_config = BrowserConfig::builder()
-            .headless_mode(if browser_options.headless {
-                HeadlessMode::New
-            } else {
-                HeadlessMode::False
-            })
-            .window_size(
-                browser_options.width as u32,
-                browser_options.height as u32,
-            )
-            .user_data_dir(browser_options.user_data_directory)
-            .build()
-            .map_err(|s| anyhow!(s))?;
+        let browser_config = browser_options_to_config(browser_options)?;
         let (browser, mut handler) =
             chromiumoxide::Browser::launch(browser_config).await?;
 
@@ -743,4 +732,30 @@ fn remote_object_to_json(object: &runtime::RemoteObject) -> json::Value {
             json::Value::String(format!("<object of type {:?}>", r#type))
         }
     }
+}
+
+fn browser_options_to_config(
+    browser_options: &BrowserOptions,
+) -> Result<BrowserConfig> {
+    let apply_sandbox =
+        |builder: BrowserConfigBuilder| -> BrowserConfigBuilder {
+            if browser_options.sandbox {
+                builder
+            } else {
+                builder.no_sandbox()
+            }
+        };
+    apply_sandbox(BrowserConfig::builder())
+        .headless_mode(if browser_options.headless {
+            HeadlessMode::New
+        } else {
+            HeadlessMode::False
+        })
+        .window_size(
+            browser_options.width as u32,
+            browser_options.height as u32,
+        )
+        .user_data_dir(browser_options.user_data_directory.clone())
+        .build()
+        .map_err(|s| anyhow!(s))
 }

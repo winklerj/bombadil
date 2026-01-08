@@ -52,7 +52,7 @@ pub async fn run(origin: &Url, browser: &mut Browser) -> Result<()> {
 
 pub async fn run_test(
     origin: Url,
-    browser_options: BrowserOptions,
+    browser_options: &BrowserOptions,
 ) -> Result<()> {
     info!("testing {}", &origin);
     let mut browser = Browser::new(origin.clone(), browser_options).await?;
