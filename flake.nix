@@ -29,7 +29,7 @@
       in
       {
         packages = {
-          default = pkgs.callPackage ./. { inherit gitignoreSource; };
+          default = pkgs.callPackage ./nix/executable.nix { inherit gitignoreSource; };
         };
 
         devShells = {
