@@ -44,11 +44,12 @@
             buildInputs = with pkgs; [
               rust-analyzer
               rustfmt
+              crate2nix
+              cargo-insta
               chromium
               typescript
               typescript-language-server
               esbuild
-              crate2nix
             ];
           };
         };

@@ -7,6 +7,7 @@ use tempfile::TempDir;
 
 use antithesis_browser::{
     browser::BrowserOptions,
+    proxy::start_proxy,
     runner::{run_test, RunnerOptions},
 };
 
@@ -33,6 +34,10 @@ enum Command {
         height: u16,
         #[arg(long, default_value_t = false)]
         exit_on_violation: bool,
+    },
+    Proxy {
+        #[arg(long)]
+        port: u16,
     },
 }
 
@@ -93,5 +98,6 @@ async fn main() -> Result<()> {
                 }
             }
         }
+        Command::Proxy { port } => start_proxy(port).await,
     }
 }
