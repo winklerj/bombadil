@@ -54,3 +54,17 @@ After any changes to dependencies in Cargo.toml:
 crate2nix generate -o nix/Cargo.nix
 ```
 
+
+## JS Instrumentation Proxy
+
+First, start the proxy:
+
+```bash
+cargo run -- proxy --port=9000
+```
+
+Then run:
+
+```bash
+chromium --incognito --temp-profile --proxy-server="http://127.0.0.1:9000" --proxy-bypass-list="<-loopback>"
+```
