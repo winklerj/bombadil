@@ -2,6 +2,7 @@ use std::time::UNIX_EPOCH;
 
 use crate::browser::actions::{available_actions, Timeout};
 use crate::browser::random;
+use crate::proxy::Proxy;
 use crate::state_machine::{self, StateMachine};
 use ::url::Url;
 use anyhow::{bail, Result};
@@ -41,6 +42,8 @@ pub async fn run(
                         }
                     }
 
+                    info!("covered branches: {}", state.covered_branches);
+
                     let actions = available_actions(origin, &state).await?;
                     let action = random::pick_action(&mut rng, actions);
 
@@ -73,11 +76,18 @@ pub async fn run_test(
     browser_options: &BrowserOptions,
 ) -> Result<()> {
     info!("testing {}", &origin);
-    let mut browser = Browser::new(origin.clone(), browser_options).await?;
+    let proxy = Proxy::spawn(3128).await?;
+
+    let mut browser_options = browser_options.clone();
+    browser_options.proxy = Some(format!("http://127.0.0.1:{}", proxy.port));
+
+    let mut browser = Browser::new(origin.clone(), &browser_options).await?;
 
     browser.initiate().await?;
     let result = run(&origin, runner_options, &mut browser).await;
     browser.terminate().await?;
+
+    proxy.stop();
 
     result
 }

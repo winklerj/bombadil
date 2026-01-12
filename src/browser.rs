@@ -93,12 +93,14 @@ struct BrowserContext {
     origin: Url,
 }
 
+#[derive(Clone)]
 pub struct BrowserOptions {
     pub headless: bool,
     pub user_data_directory: PathBuf,
     pub width: u16,
     pub height: u16,
     pub no_sandbox: bool,
+    pub proxy: Option<String>,
 }
 
 pub struct Browser {
@@ -750,7 +752,17 @@ fn browser_options_to_config(
                 builder
             }
         };
-    apply_sandbox(BrowserConfig::builder())
+    let apply_proxy = |builder: BrowserConfigBuilder| -> BrowserConfigBuilder {
+        if let Some(proxy_address) = &browser_options.proxy {
+            builder.args([
+                format!("--proxy-server={}", proxy_address),
+                "--proxy-bypass-list=<-loopback>".to_string(),
+            ])
+        } else {
+            builder
+        }
+    };
+    apply_proxy(apply_sandbox(BrowserConfig::builder()))
         .headless_mode(if browser_options.headless {
             HeadlessMode::New
         } else {

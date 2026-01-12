@@ -7,7 +7,7 @@ use tempfile::TempDir;
 
 use antithesis_browser::{
     browser::BrowserOptions,
-    proxy::start_proxy,
+    proxy::Proxy,
     runner::{run_test, RunnerOptions},
 };
 
@@ -88,6 +88,7 @@ async fn main() -> Result<()> {
                 width,
                 height,
                 no_sandbox,
+                proxy: None,
             };
             match run_test(origin.url, &runner_options, &browser_options).await
             {
@@ -98,6 +99,10 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Command::Proxy { port } => start_proxy(port).await,
+        Command::Proxy { port } => {
+            let mut proxy = Proxy::spawn(port).await?;
+            log::info!("proxy started on 127.0.0.1:{}", proxy.port);
+            Ok(proxy.done().await)
+        }
     }
 }

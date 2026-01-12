@@ -34,12 +34,43 @@ use std::{
 use tokio::{
     net::{TcpListener, TcpStream},
     spawn,
+    sync::oneshot,
 };
 use tower::Service;
 
 use crate::instrumentation;
 
-pub async fn start_proxy(port: u16) -> Result<()> {
+pub struct Proxy {
+    pub port: u16,
+    shutdown: oneshot::Sender<()>,
+}
+
+impl Proxy {
+    pub async fn spawn(port: u16) -> Result<Self> {
+        let (sender, receiver) = oneshot::channel();
+        let port = start_proxy(port, receiver).await?;
+        Ok(Proxy {
+            port,
+            shutdown: sender,
+        })
+    }
+
+    pub fn stop(self) {
+        match self.shutdown.send(()) {
+            Ok(_) => {}
+            Err(_) => log::error!("failed to stop proxy"),
+        }
+    }
+
+    pub async fn done(&mut self) {
+        self.shutdown.closed().await
+    }
+}
+
+async fn start_proxy(
+    port: u16,
+    mut shutdown: oneshot::Receiver<()>,
+) -> Result<u16> {
     let tower_service = tower::service_fn(move |req: Request<_>| async move {
         let req = req.map(Body::new);
         if req.method() == Method::CONNECT {
@@ -66,30 +97,41 @@ pub async fn start_proxy(port: u16) -> Result<()> {
     });
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    log::debug!("listening on {}", addr);
 
     let listener = TcpListener::bind(addr).await.unwrap();
-    loop {
-        let (stream, _) = listener.accept().await.unwrap();
-        let io = TokioIo::new(stream);
-        tokio::task::spawn(async move {
-            if let Err(err) = http1::Builder::new()
-                .preserve_header_case(true)
-                .title_case_headers(true)
-                .serve_connection(io, {
-                    hyper::service::service_fn(
-                        move |request: Request<Incoming>| {
-                            tower_service.clone().call(request)
-                        },
-                    )
-                })
-                .with_upgrades()
-                .await
-            {
-                println!("Failed to serve connection: {err:?}");
+    let port_actual = listener.local_addr()?.port();
+
+    log::info!("proxy listening on port {}", port_actual);
+
+    spawn(async move {
+        loop {
+            if let Ok(_) = shutdown.try_recv() {
+                log::info!("shutting down proxy");
+                break;
             }
-        });
-    }
+            let (stream, _) = listener.accept().await.unwrap();
+            let io = TokioIo::new(stream);
+            tokio::task::spawn(async move {
+                if let Err(err) = http1::Builder::new()
+                    .preserve_header_case(true)
+                    .title_case_headers(true)
+                    .serve_connection(io, {
+                        hyper::service::service_fn(
+                            move |request: Request<Incoming>| {
+                                tower_service.clone().call(request)
+                            },
+                        )
+                    })
+                    .with_upgrades()
+                    .await
+                {
+                    println!("Failed to serve connection: {err:?}");
+                }
+            });
+        }
+    });
+
+    Ok(port_actual)
 }
 
 async fn proxy_https(req: Request) -> Result<Response, hyper::Error> {
