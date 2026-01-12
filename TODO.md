@@ -3,12 +3,11 @@
     * add LTL specs support
     * detect changes using mutation observers?
 * proxy
-    * better IDs
-        * hash of (file id, seq number)
-    * use etag as file id first, otherwise hash the bytes
     * instrument inline scripts in html?
     * cache instrumented responses
-        * respect cache headers? or just infinite lifetime?
+        * respect cache headers? or just infinite lifetime? probably needs to
+          respect because there _could_ be dynamically generated scripts, even
+          if weird.
 
 # ideas
 
