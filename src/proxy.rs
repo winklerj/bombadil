@@ -134,17 +134,13 @@ async fn proxy_with_instrumentation(
     req: Request<Body>,
 ) -> Result<Response<Body>> {
     let (parts, body) = req.into_parts();
-    let host = parts
-        .headers
-        .get("host")
-        .ok_or(anyhow!("no `host` header in request"))?
-        .to_str()?;
 
-    // // Fake for now:
-    // let host = "localhost:8000";
-    //
+    let host = parts.uri.host().ok_or(anyhow!("no host in request uri"))?;
+    let port = parts.uri.port().map(|port| port.as_u16()).unwrap_or(80);
 
-    let stream = TcpStream::connect(host).await?;
+    let stream = TcpStream::connect(format!("{}:{}", host, port))
+        .await
+        .map_err(|err| anyhow!("couldn't connect to {}: {}", host, err))?;
     let io = TokioIo::new(stream);
     let (mut sender, conn) =
         hyper::client::conn::http1::handshake::<_, Body>(io).await?;
