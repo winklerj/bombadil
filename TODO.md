@@ -2,6 +2,14 @@
     * check external links?
     * add LTL specs support
     * detect changes using mutation observers?
+    * missing transition:
+        ```
+        ---- test_other_domain stdout ----
+
+        thread 'test_other_domain' (171746) panicked at tests/integration_tests.rs:86:13:
+        unexpected error: state machine error: process_event: unhandled transition: Navigating + Loaded
+        note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+        ```
 * proxy
     * instrument inline scripts in html?
     * cache instrumented responses
