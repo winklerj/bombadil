@@ -138,9 +138,17 @@ async fn proxy_with_instrumentation(
     let host = parts.uri.host().ok_or(anyhow!("no host in request uri"))?;
     let port = parts.uri.port().map(|port| port.as_u16()).unwrap_or(80);
 
-    let stream = TcpStream::connect(format!("{}:{}", host, port))
-        .await
-        .map_err(|err| anyhow!("couldn't connect to {}: {}", host, err))?;
+    let stream = match TcpStream::connect(format!("{}:{}", host, port)).await {
+        Ok(stream) => stream,
+        Err(err) => {
+            log::debug!("couldn't connect to {}: {}", host, err);
+            return Ok((
+                StatusCode::SERVICE_UNAVAILABLE,
+                "upstream server connection error",
+            )
+                .into_response());
+        }
+    };
     let io = TokioIo::new(stream);
     let (mut sender, conn) =
         hyper::client::conn::http1::handshake::<_, Body>(io).await?;
