@@ -8,6 +8,8 @@
         * respect cache headers? or just infinite lifetime? probably needs to
           respect because there _could_ be dynamically generated scripts, even
           if weird.
+    * rewrite/produce sourcemaps (or at least drop the directives from
+      instrumented sources, as they'll be incorrect
 
 # ideas
 
