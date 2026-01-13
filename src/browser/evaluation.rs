@@ -1,6 +1,9 @@
 use anyhow::{anyhow, bail, Result};
 use chromiumoxide::{
-    cdp::js_protocol::{debugger, runtime},
+    cdp::js_protocol::{
+        debugger,
+        runtime::{self, RemoteObjectType},
+    },
     Page,
 };
 use serde::de::DeserializeOwned;
@@ -28,12 +31,27 @@ pub async fn evaluate_expression_in_debugger<Output: DeserializeOwned>(
         bail!("evaluate_function failed: {:?}", exception)
     } else {
         match returns.result.value.clone() {
-            Some(value) => json::from_value(value),
+            Some(value) => json::from_value(value).map_err(|err| anyhow!(err)),
             None => {
                 if let Some(runtime::RemoteObjectSubtype::Null) =
                     returns.result.subtype
                 {
                     json::from_value(json::Value::Null)
+                        .map_err(|err| anyhow!(err))
+                } else if let Some(ref value) =
+                    returns.result.unserializable_value
+                    && returns.result.r#type == RemoteObjectType::Bigint
+                {
+                    let s = value
+                        .inner()
+                        .strip_suffix('n')
+                        .unwrap_or(value.inner());
+                    json::from_value(json::json!(s)).map_err(|err| {
+                        anyhow!(
+                            "failed to parse bigint string as output: {}",
+                            err
+                        )
+                    })
                 } else {
                     bail!(
                         "no return value from function call: {:?}",
@@ -42,7 +60,6 @@ pub async fn evaluate_expression_in_debugger<Output: DeserializeOwned>(
                 }
             }
         }
-        .map_err(|err| anyhow!(err))
     }
 }
 

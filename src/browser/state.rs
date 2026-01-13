@@ -35,10 +35,10 @@ pub struct BrowserState {
     pub console_entries: Vec<ConsoleEntry>,
     pub navigation_history: NavigationHistory,
     pub exception: Option<Exception>,
+    pub transition_hash: Option<u64>,
     pub coverage: Coverage,
 
-    #[allow(unused, reason = "we'll store this later")]
-    screenshot_path: PathBuf,
+    pub screenshot_path: PathBuf,
 }
 
 pub type EdgeIndex = u32;
@@ -192,6 +192,61 @@ impl BrowserState {
         )
         .await?;
 
+        let transition_hash_bigint: Option<String> =
+            evaluate_expression_in_debugger(
+                &page,
+                call_frame_id,
+                format!(
+                    "
+                (() => {{
+                    if (!window.{NAMESPACE}) return null;
+
+                    const SIMHASH_BITS = 64;
+                    function hash64(x) {{
+                        let h = BigInt(x) + 0x9e3779b97f4a7c15n;
+                        h = (h ^ (h >> 30n)) * 0xbf58476d1ce4e5b9n;
+                        h = (h ^ (h >> 27n)) * 0x94d049bb133111ebn;
+                        return h ^ (h >> 31n);
+                    }}
+
+                    const acc = new Int32Array(SIMHASH_BITS);
+
+                    for (let i = 0; i < {EDGE_MAP_SIZE}; i++) {{
+                        const bucket = window.{NAMESPACE}.{EDGES_PREVIOUS}[i];
+                        if (bucket === 0) continue;
+
+                        // const weight = Math.max(1, Math.min(3, Math.floor(Math.log2(bucket))));
+                        const weight = bucket > 0 ? 1 : 0; // presence only
+                        let h = hash64(i);
+
+                        for (let b = 0; b < SIMHASH_BITS; b++) {{
+                            const bit = (h >> BigInt(b)) & 1n;
+                            acc[b] += bit === 1n ? weight : -weight;
+                        }}
+                    }}
+
+                    if (acc.every(b => b == 0)) return null;
+
+                    let out = 0n;
+                    for (let b = 0; b < SIMHASH_BITS; b++) {{
+                        if (acc[b] > 0) {{
+                            out |= 1n << BigInt(b);
+                        }}
+                    }}
+
+                    window.{NAMESPACE}.{EDGES_CURRENT}.fill(0);
+                    return out;
+                }})()
+            "
+                ),
+            )
+            .await?;
+
+        let transition_hash = match transition_hash_bigint {
+            Some(string) => Some(string.parse::<u64>()?),
+            None => None,
+        };
+
         Ok(BrowserState {
             page: page.clone(),
             call_frame_id: call_frame_id.clone(),
@@ -202,6 +257,7 @@ impl BrowserState {
             navigation_history,
             exception,
             coverage: Coverage { edges_new },
+            transition_hash,
             screenshot_path,
         })
     }

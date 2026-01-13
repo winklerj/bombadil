@@ -80,8 +80,12 @@ async fn main() -> Result<()> {
             no_sandbox,
             exit_on_violation,
         } => {
-            let user_data_directory = TempDir::new()?;
-            let runner_options = RunnerOptions { exit_on_violation };
+            let user_data_directory = TempDir::with_prefix("user_data_")?;
+            let states_directory = TempDir::with_prefix("states_")?;
+            let runner_options = RunnerOptions {
+                exit_on_violation,
+                states_directory: states_directory.keep(),
+            };
             let browser_options = BrowserOptions {
                 headless,
                 user_data_directory: user_data_directory.path().to_path_buf(),

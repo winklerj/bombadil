@@ -58,6 +58,7 @@ async fn run_browser_test(name: &str, expect: Expect, timeout: Duration) {
     let origin =
         Url::parse(&format!("http://localhost:{}/{}", port, name,)).unwrap();
     let user_data_directory = TempDir::new().unwrap();
+    let states_directory = TempDir::new().unwrap();
 
     let result = tokio::time::timeout(
         timeout,
@@ -65,6 +66,7 @@ async fn run_browser_test(name: &str, expect: Expect, timeout: Duration) {
             origin,
             &RunnerOptions {
                 exit_on_violation: true,
+                states_directory: states_directory.path().to_path_buf(),
             },
             &BrowserOptions {
                 headless: true,
