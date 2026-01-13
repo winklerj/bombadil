@@ -1,3 +1,4 @@
+use crate::instrumentation::{GLOBAL_EDGE_MAP, NAMESPACE};
 use anyhow::{Context, Result};
 use chromiumoxide::{
     cdp::{
@@ -32,10 +33,15 @@ pub struct BrowserState {
     pub console_entries: Vec<ConsoleEntry>,
     pub navigation_history: NavigationHistory,
     pub exception: Option<Exception>,
-    pub covered_branches: u32,
+    pub coverage: Coverage,
 
     #[allow(unused, reason = "we'll store this later")]
     screenshot_path: PathBuf,
+}
+
+#[derive(Clone, Debug)]
+pub struct Coverage {
+    pub edges: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -140,10 +146,12 @@ impl BrowserState {
         let mut screenshot_file = std::fs::File::create(&screenshot_path)?;
         screenshot_file.write_all(&screenshot_content)?;
 
-        let covered_branches: u32 = evaluate_expression_in_debugger(
+        let coverage_edges: u32 = evaluate_expression_in_debugger(
             &page,
             call_frame_id,
-            "window.antithesis?.coverage?.filter(x => x > 0).length || 0",
+            format!(
+                "window.{NAMESPACE}?.{GLOBAL_EDGE_MAP}?.filter(x => x > 0).length || 0"
+            ),
         )
         .await?;
 
@@ -156,7 +164,9 @@ impl BrowserState {
             console_entries,
             navigation_history,
             exception,
-            covered_branches,
+            coverage: Coverage {
+                edges: coverage_edges,
+            },
             screenshot_path,
         })
     }

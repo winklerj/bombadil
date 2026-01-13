@@ -42,7 +42,7 @@ pub async fn run(
                         }
                     }
 
-                    info!("covered branches: {}", state.covered_branches);
+                    info!("covered edges: {}", state.coverage.edges);
 
                     let actions = available_actions(origin, &state).await?;
                     let action = random::pick_action(&mut rng, actions);

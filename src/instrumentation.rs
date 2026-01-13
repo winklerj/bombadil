@@ -1,6 +1,7 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
+use const_format::{formatcp, str_replace};
 use oxc::allocator;
 use oxc::ast::ast::{
     AssignmentOperator, AssignmentTarget, BindingRestElement, Expression,
@@ -40,10 +41,20 @@ pub type InstrumentationResult<T> = Result<T, InstrumentationError>;
 
 pub struct SourceId(pub u64);
 
-const NAMESPACE: &'static str = "antithesis";
-const COVERAGE_MAP: &'static str = "coverage";
+pub const NAMESPACE: &'static str = "antithesis";
+pub const GLOBAL_EDGE_MAP: &'static str = "edges_global";
 const LOCATION_PREVIOUS: &'static str = "previous";
-const SIZE_BYTES: u32 = 64 * 1024;
+const EDGE_MAP_SIZE_BYTES: u32 = 64 * 1024;
+const PRELUDE: &'static str = str_replace!(
+    formatcp!(
+        "window.{NAMESPACE} = window.{NAMESPACE} || {{
+            {GLOBAL_EDGE_MAP}: new Uint8Array({EDGE_MAP_SIZE_BYTES}),
+            {LOCATION_PREVIOUS}: 0,
+        }};"
+    ),
+    "        ", // indent of the block above (hacky, but it's covered by snapshot tests)
+    ""
+);
 
 pub fn instrument_source_code(
     source_id: SourceId,
@@ -56,10 +67,8 @@ pub fn instrument_source_code(
 
     let program_codegen = Codegen::new().build(&program);
 
-    let code = format!(
-        "window.{NAMESPACE} = window.{NAMESPACE} || {{ {COVERAGE_MAP}: new Uint8Array({SIZE_BYTES}), {LOCATION_PREVIOUS}: 0 }};\n{}",
-        program_codegen.code
-    );
+    log::info!("adding prelude: {PRELUDE}");
+    let code = format!("{PRELUDE}\n{}", program_codegen.code);
     return Ok(code);
 }
 
@@ -156,7 +165,7 @@ impl<'a> Instrumenter {
                 AssignmentTarget::ComputedMemberExpression(
                     ctx.ast.alloc_computed_member_expression(
                         SPAN,
-                        antithesis_member(COVERAGE_MAP).into(),
+                        antithesis_member(GLOBAL_EDGE_MAP).into(),
                         branch_index,
                         false,
                     ),
