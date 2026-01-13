@@ -12,6 +12,7 @@
         ```
 * proxy
     * instrument inline scripts in html?
+        * see riotjs example in todomvc!
     * cache instrumented responses
         * respect cache headers? or just infinite lifetime? probably needs to
           respect because there _could_ be dynamically generated scripts, even
@@ -28,4 +29,3 @@
     * paused/blurred tab
     * network request reordering, delays, etc (not necessary with antithesis fault injector?)
     * clear cookies, application state, etc
-
