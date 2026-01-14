@@ -215,8 +215,8 @@ impl BrowserState {
                         const bucket = window.{NAMESPACE}.{EDGES_PREVIOUS}[i];
                         if (bucket === 0) continue;
 
-                        // const weight = Math.max(1, Math.min(3, Math.floor(Math.log2(bucket))));
-                        const weight = bucket > 0 ? 1 : 0; // presence only
+                        const weight = Math.max(1, Math.min(3, Math.floor(Math.log2(bucket))));
+                        // const weight = bucket > 0 ? 1 : 0; // presence only
                         let h = hash64(i);
 
                         for (let b = 0; b < SIMHASH_BITS; b++) {{

@@ -3,8 +3,6 @@ import json
 import re
 import sys
 from pathlib import Path
-from PIL import Image
-from collections import defaultdict
 from urllib.parse import urlparse, parse_qs
 
 # usage: python3 trace_to_d3_elk.py trace.jsonl /path/to/output_dir
@@ -77,9 +75,10 @@ def url_features(url):
     fragment = parsed.fragment
     features = []
     # path
-    for seg in path_segments:
+    segment_count = len(path_segments)
+    for i, seg in enumerate(path_segments):
         if seg:
-            w = int(segment_weight(seg) * 10) or 1
+            w = int(segment_weight(seg) * (((i + 1) / segment_count + 0.5) ** 2)) or 1
             features.extend([seg] * w)
     # query
     for k, vals in query_params.items():
@@ -95,6 +94,7 @@ def url_features(url):
 
 def url_simhash(url):
     feats = url_features(url)
+    print(f"url features: {feats}")
     v = [0] * 64
     for f in feats:
         h = feature_hash(f)
@@ -119,7 +119,7 @@ for t in trace:
 
 # ---------- weighted clustering ----------
 coverage_weight = 1.0
-url_weight = 5.0
+url_weight = 2.0
 THRESHOLD = 8  # adjust as needed
 
 
@@ -127,111 +127,51 @@ def combined_distance(a, b):
     """Weighted sum of coverage Hamming and URL simhash Hamming"""
     d_cov = bin(a["cov_hash"] ^ b["cov_hash"]).count("1")
     d_url = bin(a.get("url_simhash", 0) ^ b.get("url_simhash", 0)).count("1")
-    return coverage_weight * d_cov + url_weight * d_url
+    total_weight = coverage_weight + url_weight
+    print(
+        coverage_weight * d_cov,
+        url_weight * d_url,
+        (coverage_weight * d_cov + url_weight * d_url) / total_weight,
+    )
+    return (coverage_weight * d_cov + url_weight * d_url) / total_weight
 
-
-all_hashes = {t["prev"] for t in trace if t["prev"] is not None} | {
-    t["curr"] for t in trace if t["curr"] is not None
-}
 
 clusters = []
-hash_to_cluster = {}
+node_to_cluster = {}
 
-for h in all_hashes:
-    # pick a trace entry with this hash
-    h_info = next(
-        (t for t in trace if t.get("curr") == h or t.get("prev") == h),
+for idx, t in enumerate(trace):
+    for ci, cluster in enumerate(clusters):
+        rep_idx = cluster[0]
+        rep = trace[rep_idx]
+        if combined_distance(t, rep) <= THRESHOLD:
+            cluster.append(idx)
+            node_to_cluster[idx] = ci
+            break
+    else:
+        # new cluster
+        clusters.append([idx])
+        node_to_cluster[idx] = len(clusters) - 1
+
+
+first_cluster = node_to_cluster[0]
+
+cluster_images = {}
+cluster_all_images = {}
+
+for ci, cluster in enumerate(clusters):
+    # representative image = first non-empty screenshot
+    cluster_images[ci] = next(
+        (
+            trace[idx].get("screenshot")
+            for idx in cluster
+            if trace[idx].get("screenshot")
+        ),
         None,
     )
-    if h_info is None:
-        continue
-    for ci, cluster in enumerate(clusters):
-        # compare against representative of cluster (first hash)
-        cluster_hash = cluster[0]
-        cluster_info = next(
-            (
-                t
-                for t in trace
-                if t.get("curr") == cluster_hash or t.get("prev") == cluster_hash
-            ),
-            None,
-        )
-        if cluster_info is None:
-            continue
-        if combined_distance(h_info, cluster_info) <= THRESHOLD:
-            cluster.append(h)
-            hash_to_cluster[h] = ci
-            break
-    else:
-        clusters.append([h])
-        hash_to_cluster[h] = len(clusters) - 1
-
-
-first_hash = None
-# first non-null hash in the trace
-for t in trace:
-    first_hash = t.get("prev") or t.get("curr")
-    if first_hash is not None:
-        break
-first_cluster = hash_to_cluster[first_hash]
-
-
-# ---------- screenshots per hash ----------
-hash_to_screenshots = defaultdict(list)
-for t in trace:
-    s = t.get("screenshot")
-    if not s:
-        continue
-    for h in (t["prev"], t["curr"]):
-        if h is not None:
-            hash_to_screenshots[h].append(s)
-
-# ---------- earliest screenshot per cluster (representative) ----------
-cluster_images = {}
-for ci, cluster in enumerate(clusters):
-    earliest_idx = None
-    earliest_img = None
-    for idx, t in enumerate(trace):
-        if t.get("screenshot") and (t["prev"] in cluster or t["curr"] in cluster):
-            earliest_idx = idx
-            earliest_img = t["screenshot"]
-            break
-    cluster_images[ci] = earliest_img
-
-# ---------- copy representative images ----------
-for ci, screenshot in cluster_images.items():
-    if not screenshot:
-        continue
-    src = Path(screenshot)
-    dst = img_dir / f"cluster_{ci}.png"
-    if src.suffix.lower() == ".webp":
-        Image.open(src).convert("RGBA").save(dst, "PNG")
-    else:
-        dst.write_bytes(src.read_bytes())
-    cluster_images[ci] = f"images/{dst.name}"
-
-# ---------- copy ALL screenshots per cluster ----------
-cluster_all_images = {}
-for ci, cluster in enumerate(clusters):
-    cluster_dir = img_dir / f"cluster_{ci}"
-    cluster_dir.mkdir(exist_ok=True)
-    seen = set()
-    out_imgs = []
-
-    for h in cluster:
-        for s in hash_to_screenshots.get(h, []):
-            if s in seen:
-                continue
-            seen.add(s)
-            src = Path(s)
-            dst = cluster_dir / f"{len(out_imgs)}.png"
-            if src.suffix.lower() == ".webp":
-                Image.open(src).convert("RGBA").save(dst, "PNG")
-            else:
-                dst.write_bytes(src.read_bytes())
-            out_imgs.append(f"images/cluster_{ci}/{dst.name}")
-
-    cluster_all_images[ci] = out_imgs
+    # all images in cluster
+    cluster_all_images[ci] = [
+        trace[idx].get("screenshot") for idx in cluster if trace[idx].get("screenshot")
+    ]
 
 
 # ---------- summarize actions ----------
@@ -254,28 +194,34 @@ def summarize_action(action):
 # ---------- edges ----------
 edges = []
 seen = set()
-last_hash = None
-for t in trace:
-    prev_hash = t["prev"] or last_hash
-    curr_hash = t["curr"]
-    if prev_hash is None or curr_hash is None:
-        last_hash = curr_hash or prev_hash
+last_idx = None  # last trace index
+
+for idx, t in enumerate(trace):
+    curr_idx = idx
+    prev_idx = last_idx
+
+    if prev_idx is None:
+        last_idx = curr_idx
         continue
-    ci = hash_to_cluster[prev_hash]
-    cj = hash_to_cluster[curr_hash]
+
+    ci = node_to_cluster[prev_idx]
+    cj = node_to_cluster[curr_idx]
     label = summarize_action(t.get("action"))
+
+    # key to deduplicate edges between clusters with the same label
     key = (ci, cj, label)
     if key not in seen:
         edges.append(
             {
-                "id": f"e{ci}_{cj}",
+                "id": f"e{ci}_{cj}_{len(edges)}",
                 "sources": [str(ci)],
                 "targets": [str(cj)],
                 "label": label,
             }
         )
         seen.add(key)
-    last_hash = curr_hash
+
+    last_idx = curr_idx
 
 # ---------- ELK graph ----------
 elk_graph = {
