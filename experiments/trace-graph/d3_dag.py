@@ -1,0 +1,540 @@
+#!/usr/bin/env python3
+import json
+import re
+import sys
+from pathlib import Path
+from PIL import Image
+from collections import defaultdict
+from urllib.parse import urlparse, parse_qs
+
+# usage: python3 trace_to_d3_elk.py trace.jsonl /path/to/output_dir
+trace_file = sys.argv[1]
+out_dir = Path(sys.argv[2])
+img_dir = out_dir / "images"
+out_dir.mkdir(parents=True, exist_ok=True)
+img_dir.mkdir(parents=True, exist_ok=True)
+
+# ---------- load trace ----------
+trace = []
+with open(trace_file) as f:
+    for line in f:
+        t = json.loads(line)
+        trace.append(
+            {
+                "prev": t.get("hash_previous"),
+                "curr": t.get("hash_current"),
+                "screenshot": t.get("screenshot_path"),
+                "action": t.get("action"),
+            }
+        )
+
+
+def split_url(url):
+    """Return path segments, query parameters dict, and fragment as a feature"""
+    parsed = urlparse(url)
+    path_segments = parsed.path.strip("/").split("/")
+    query_params = parse_qs(parsed.query)
+    fragment = parsed.fragment
+    return path_segments, query_params, fragment
+
+
+UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{12}$"
+)
+
+
+def segment_weight(segment=None, param_name=None):
+    """Assign weight: path=1, numeric/UUID=0.5, query params important=0.5, else 0"""
+    if param_name:
+        return 0.5 if param_name in ["page", "lang"] else 0
+    if segment is None:
+        return 1
+    if segment.isdigit() or UUID_RE.match(segment):
+        return 0.5
+    return 1
+
+
+def feature_hash(s):
+    """Simple 64-bit hash"""
+    h = 0xCBF29CE484222325
+    fnv_prime = 0x100000001B3
+    for c in s:
+        h ^= ord(c)
+        h *= fnv_prime
+        h &= 0xFFFFFFFFFFFFFFFF
+    return h
+
+
+def url_features(url):
+    parsed = urlparse(url)
+    path_segments = parsed.path.strip("/").split("/")
+    query_params = parse_qs(parsed.query)
+    fragment = parsed.fragment
+    features = []
+    # path
+    for seg in path_segments:
+        if seg:
+            w = int(segment_weight(seg) * 10) or 1
+            features.extend([seg] * w)
+    # query
+    for k, vals in query_params.items():
+        w = segment_weight(None, k)
+        if w > 0:
+            for v in vals:
+                features.extend([f"{k}={v}"] * int(w * 10))
+    # fragment
+    if fragment:
+        features.extend([fragment] * 5)  # moderate weight
+    return features
+
+
+def url_simhash(url):
+    feats = url_features(url)
+    v = [0] * 64
+    for f in feats:
+        h = feature_hash(f)
+        for i in range(64):
+            v[i] += 1 if (h >> i) & 1 else -1
+    sim = 0
+    for i, val in enumerate(v):
+        if val > 0:
+            sim |= 1 << i
+    return sim
+
+
+# ---------- compute simhashes for trace ----------
+for t in trace:
+    # coverage hash must exist for original clustering
+    t["cov_hash"] = t.get("curr") or 0  # or whatever coverage integer
+    url = t.get("url")
+    if url:
+        t["url_simhash"] = url_simhash(url)
+    else:
+        t["url_simhash"] = 0
+
+# ---------- weighted clustering ----------
+coverage_weight = 1.0
+url_weight = 3.0
+THRESHOLD = 6  # adjust as needed
+
+
+def combined_distance(a, b):
+    """Weighted sum of coverage Hamming and URL simhash Hamming"""
+    d_cov = bin(a["cov_hash"] ^ b["cov_hash"]).count("1")
+    d_url = bin(a.get("url_simhash", 0) ^ b.get("url_simhash", 0)).count("1")
+    return coverage_weight * d_cov + url_weight * d_url
+
+
+all_hashes = {t["prev"] for t in trace if t["prev"] is not None} | {
+    t["curr"] for t in trace if t["curr"] is not None
+}
+
+clusters = []
+hash_to_cluster = {}
+
+for h in all_hashes:
+    # pick a trace entry with this hash
+    h_info = next(
+        (t for t in trace if t.get("curr") == h or t.get("prev") == h),
+        None,
+    )
+    if h_info is None:
+        continue
+    for ci, cluster in enumerate(clusters):
+        # compare against representative of cluster (first hash)
+        cluster_hash = cluster[0]
+        cluster_info = next(
+            (
+                t
+                for t in trace
+                if t.get("curr") == cluster_hash or t.get("prev") == cluster_hash
+            ),
+            None,
+        )
+        if cluster_info is None:
+            continue
+        if combined_distance(h_info, cluster_info) <= THRESHOLD:
+            cluster.append(h)
+            hash_to_cluster[h] = ci
+            break
+    else:
+        clusters.append([h])
+        hash_to_cluster[h] = len(clusters) - 1
+
+
+first_hash = None
+# first non-null hash in the trace
+for t in trace:
+    first_hash = t.get("prev") or t.get("curr")
+    if first_hash is not None:
+        break
+
+first_cluster = hash_to_cluster[first_hash]
+
+print(f"first cluster is {first_cluster}")
+
+
+# ---------- screenshots per hash ----------
+hash_to_screenshots = defaultdict(list)
+for t in trace:
+    s = t.get("screenshot")
+    if not s:
+        continue
+    for h in (t["prev"], t["curr"]):
+        if h is not None:
+            hash_to_screenshots[h].append(s)
+
+# ---------- earliest screenshot per cluster (representative) ----------
+cluster_images = {}
+for ci, cluster in enumerate(clusters):
+    earliest_idx = None
+    earliest_img = None
+    for idx, t in enumerate(trace):
+        if t.get("screenshot") and (t["prev"] in cluster or t["curr"] in cluster):
+            earliest_idx = idx
+            earliest_img = t["screenshot"]
+            break
+    cluster_images[ci] = earliest_img
+
+# ---------- copy representative images ----------
+for ci, screenshot in cluster_images.items():
+    if not screenshot:
+        continue
+    src = Path(screenshot)
+    dst = img_dir / f"cluster_{ci}.png"
+    if src.suffix.lower() == ".webp":
+        Image.open(src).convert("RGBA").save(dst, "PNG")
+    else:
+        dst.write_bytes(src.read_bytes())
+    cluster_images[ci] = f"images/{dst.name}"
+
+# ---------- copy ALL screenshots per cluster ----------
+cluster_all_images = {}
+for ci, cluster in enumerate(clusters):
+    cluster_dir = img_dir / f"cluster_{ci}"
+    cluster_dir.mkdir(exist_ok=True)
+    seen = set()
+    out_imgs = []
+
+    for h in cluster:
+        for s in hash_to_screenshots.get(h, []):
+            if s in seen:
+                continue
+            seen.add(s)
+            src = Path(s)
+            dst = cluster_dir / f"{len(out_imgs)}.png"
+            if src.suffix.lower() == ".webp":
+                Image.open(src).convert("RGBA").save(dst, "PNG")
+            else:
+                dst.write_bytes(src.read_bytes())
+            out_imgs.append(f"images/cluster_{ci}/{dst.name}")
+
+    cluster_all_images[ci] = out_imgs
+
+
+# ---------- summarize actions ----------
+def summarize_action(action):
+    if not action:
+        return "?"
+    variant = next(iter(action.keys()))
+    data = action[variant]
+    if variant == "Click":
+        name = data.get("name", "?")
+        content = data.get("content")
+        return f"Click({content})" if content else f"Click({name})"
+    if variant == "TypeText":
+        return f'Type("{data.get("text","")}")'
+    if variant == "PressKey":
+        return f"Key({data.get('code')})"
+    return variant
+
+
+# ---------- edges ----------
+edges = []
+seen = set()
+last_hash = None
+for t in trace:
+    prev_hash = t["prev"] or last_hash
+    curr_hash = t["curr"]
+    if prev_hash is None or curr_hash is None:
+        last_hash = curr_hash or prev_hash
+        continue
+    ci = hash_to_cluster[prev_hash]
+    cj = hash_to_cluster[curr_hash]
+    if ci != cj:
+        key = (ci, cj)
+        if key not in seen:
+            edges.append(
+                {
+                    "id": f"e{ci}_{cj}",
+                    "sources": [str(ci)],
+                    "targets": [str(cj)],
+                    "label": summarize_action(t.get("action")),
+                }
+            )
+            seen.add(key)
+    last_hash = curr_hash
+
+# ---------- ELK graph ----------
+elk_graph = {
+    "id": "root",
+    "layoutOptions": {
+        "elk.algorithm": "layered",
+        "elk.direction": "RIGHT",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "120",
+        "elk.spacing.nodeNode": "80",
+        "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
+        "elk.edgeRouting": "ORTHOGONAL",
+    },
+    "children": [
+        {
+            "id": str(ci),
+            "width": 160,
+            "height": 120,
+            "label": f"{'START ' if ci==first_cluster else ''}({len(cluster_all_images[ci])})",
+            "image": cluster_images.get(ci),
+            "screenshots": cluster_all_images.get(ci, []),
+            "layoutOptions": (
+                {
+                    "elk.layered.layerConstraint": "FIRST",  # force to first layer
+                }
+                if ci == first_cluster
+                else {}
+            ),
+        }
+        for ci, _ in enumerate(clusters)
+    ],
+    "edges": edges,
+}
+
+# ---------- HTML ----------
+html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>State Graph (ELK)</title>
+
+<script src="https://unpkg.com/elkjs@0.9.3/lib/elk.bundled.js"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+
+<style>
+html, body {{
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #111;
+  font-family: sans-serif;
+}}
+
+svg {{
+  width: 100vw;
+  height: 100vh;
+}}
+
+.node rect {{
+  fill: #222;
+  stroke: #666;
+  stroke-width: 2px;
+  rx: 8;
+}}
+
+.node text {{
+  fill: white;
+  font-size: 12px;
+  text-anchor: middle;
+}}
+
+.node {{
+  cursor: pointer;
+}}
+
+.edge-path {{
+  stroke: #aaa;
+  stroke-width: 2px;
+  fill: none;
+}}
+
+.edge-label {{
+  fill: #ddd;
+  font-size: 11px;
+  pointer-events: none;
+}}
+
+#overlay {{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.9);
+  display: none;
+  z-index: 10;
+}}
+
+#overlay-close {{
+  position: absolute;
+  top: 10px;
+  right: 20px;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+}}
+
+#overlay-content {{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  padding: 60px 20px 20px;
+  overflow-y: auto;
+  height: 100%;
+}}
+</style>
+</head>
+<body>
+
+<svg><g></g></svg>
+
+<div id="overlay">
+  <div id="overlay-close">✕</div>
+  <div id="overlay-content"></div>
+</div>
+
+<script>
+const elkGraph = {json.dumps(elk_graph)};
+const elk = new ELK();
+const svg = d3.select("svg");
+const g = svg.select("g");
+
+// arrowhead
+svg.append("defs")
+  .append("marker")
+  .attr("id", "arrowhead")
+  .attr("viewBox", "0 -5 10 10")
+  .attr("refX", 10)
+  .attr("refY", 0)
+  .attr("markerWidth", 6)
+  .attr("markerHeight", 6)
+  .attr("orient", "auto")
+  .append("path")
+  .attr("d", "M0,-5L10,0L0,5")
+  .attr("fill", "#aaa");
+
+svg.call(
+  d3.zoom().scaleExtent([0.1, 4]).on("zoom", e => {{
+    g.attr("transform", e.transform);
+  }})
+);
+
+const overlay = document.getElementById("overlay");
+const overlayContent = document.getElementById("overlay-content");
+document.getElementById("overlay-close").onclick = () => {{
+  overlay.style.display = "none";
+  overlayContent.innerHTML = "";
+}};
+overlay.onclick = e => {{
+  if (e.target === overlay) {{
+    overlay.style.display = "none";
+    overlayContent.innerHTML = "";
+  }}
+}};
+document.addEventListener("keydown", (e) => {{
+  if (e.key === "Escape") {{
+    overlay.style.display = "none";
+    overlayContent.innerHTML = "";
+  }}
+}});
+
+function showScreenshots(node) {{
+  overlayContent.innerHTML = "";
+  (node.screenshots || []).forEach(src => {{
+    const img = document.createElement("img");
+    img.src = src;
+    img.style.width = "100%";
+    img.style.border = "1px solid #444";
+    overlayContent.appendChild(img);
+  }});
+  overlay.style.display = "block";
+}}
+
+elk.layout(elkGraph).then(layout => {{
+
+  const edgeGroup = g.append("g");
+  layout.edges.forEach(e => {{
+    e.sections.forEach(s => {{
+      const pts = [s.startPoint, ...(s.bendPoints || []), s.endPoint];
+  
+      // Edge path
+      edgeGroup.append("path")
+        .attr("class", "edge-path")
+        .attr("marker-end", "url(#arrowhead)")
+        .attr("d", d3.line().x(p=>p.x).y(p=>p.y)(pts));
+  
+      // Edge label
+      if (e.label) {{
+        // compute midpoint for label
+        const start = pts[0];
+        const end = pts[pts.length-1];
+        const mid = {{ x: (start.x+end.x)/2, y: (start.y+end.y)/2 }};
+
+        // offset in x-direction based on edge direction
+        const offsetX = (end.x > start.x) ? -10 : 10;  // push left if arrow goes right
+        const offsetY = (end.y > start.y) ? -10 : 10;  // optional vertical adjustment
+
+        edgeGroup.append("text")
+          .attr("class","edge-label")
+          .attr("x", mid.x + offsetX)
+          .attr("y", mid.y + offsetY)
+          .attr("text-anchor","middle")
+          .text(e.label);
+      }}
+     }});
+  }});
+
+  const nodes = g.append("g")
+    .selectAll(".node")
+    .data(layout.children)
+    .enter()
+    .append("g")
+    .attr("class", "node")
+    .attr("transform", d => `translate(${{d.x}},${{d.y}})`)
+    .on("click", (e,d) => {{
+      e.stopPropagation();
+      showScreenshots(d);
+    }});
+
+  nodes.append("rect")
+    .attr("width", d => d.width)
+    .attr("height", d => d.height);
+
+  nodes.append("image")
+    .attr("href", d => d.image || "")
+    .attr("x", 10)
+    .attr("y", 10)
+    .attr("width", 140)
+    .attr("height", 80);
+
+  nodes.append("text")
+    .attr("x", d => d.width/2)
+    .attr("y", d => d.height - 10)
+    .text(d => d.label);
+
+  const bbox = g.node().getBBox();
+  const scale = Math.min(innerWidth/bbox.width, innerHeight/bbox.height)*0.9;
+  svg.call(
+    d3.zoom().transform,
+    d3.zoomIdentity
+      .translate((innerWidth-bbox.width*scale)/2-bbox.x*scale,
+                 (innerHeight-bbox.height*scale)/2-bbox.y*scale)
+      .scale(scale)
+  );
+}});
+</script>
+</body>
+</html>
+"""
+
+(out_dir / "index.html").write_text(html, encoding="utf-8")
+print(f"Output written to {out_dir}")
+print("Serve with: python3 -m http.server")

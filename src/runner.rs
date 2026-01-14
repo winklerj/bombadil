@@ -26,6 +26,7 @@ pub struct RunnerOptions {
 
 #[derive(Clone, Serialize)]
 pub struct TraceEntry {
+    url: Url,
     hash_previous: Option<u64>,
     hash_current: Option<u64>,
     action: Option<BrowserAction>,
@@ -125,6 +126,7 @@ pub async fn run(
                         .await?;
 
                     let entry = TraceEntry {
+                        url: state.url.clone(),
                         hash_previous,
                         hash_current: state.transition_hash,
                         action: last_action,

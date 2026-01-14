@@ -30,7 +30,7 @@ def hamming(a, b):
     return bin(a ^ b).count("1")
 
 
-THRESHOLD = 4
+THRESHOLD = 8
 all_hashes = {t["prev"] for t in trace if t["prev"] is not None} | {
     t["curr"] for t in trace if t["curr"] is not None
 }
@@ -50,23 +50,32 @@ for h in all_hashes:
         clusters.append([h])
         hash_to_cluster[h] = len(clusters) - 1
 
-# --- choose a representative screenshot per cluster ---
-cluster_screenshots = {}
-nodes = {}
-for t in trace:
+# --- track earliest screenshot occurrence per hash ---
+hash_screenshot_info = {}
+for idx, t in enumerate(trace):
+    screenshot = t.get("screenshot")
+    if not screenshot:
+        continue
     for h in (t["prev"], t["curr"]):
         if h is None:
             continue
-        nodes[h] = {"id": h, "screenshot": t.get("screenshot")}
+        if h not in hash_screenshot_info or idx < hash_screenshot_info[h]["idx"]:
+            hash_screenshot_info[h] = {
+                "idx": idx,
+                "screenshot": screenshot,
+            }
 
+# --- choose earliest screenshot per cluster ---
+cluster_screenshots = {}
 for ci, cluster in enumerate(clusters):
-    # pick first non-null screenshot as representative
-    rep_screenshot = None
+    earliest = None
     for h in cluster:
-        if nodes[h]["screenshot"]:
-            rep_screenshot = nodes[h]["screenshot"]
-            break
-    cluster_screenshots[ci] = rep_screenshot
+        info = hash_screenshot_info.get(h)
+        if not info:
+            continue
+        if earliest is None or info["idx"] < earliest["idx"]:
+            earliest = info
+    cluster_screenshots[ci] = earliest["screenshot"] if earliest else None
 
 # --- convert WebP screenshots to PNG ---
 for ci, screenshot in cluster_screenshots.items():
@@ -85,13 +94,10 @@ for ci, screenshot in cluster_screenshots.items():
 def summarize_action(action: dict) -> str:
     """
     Convert a Rust-style BrowserAction dict to a short string.
-
-    Ignores positions, delays, distances.
     """
     if not action:
         return "?"
 
-    # The action dict will have a single key corresponding to the variant name
     variant = next(iter(action.keys()))
     data = action[variant]
 
@@ -100,16 +106,12 @@ def summarize_action(action: dict) -> str:
     elif variant == "Click":
         name = data.get("name", "?")
         content = data.get("content")
-        if content:
-            return f"Click({name}:{content})"
-        else:
-            return f"Click({name})"
+        return f"Click({name}:{content})" if content else f"Click({name})"
     elif variant == "TypeText":
         text = data.get("text", "")
         return f'Type("{text}")'
     elif variant == "PressKey":
-        code = data.get("code")
-        return f"Key({code})"
+        return f"Key({data.get('code')})"
     elif variant == "ScrollUp":
         return "ScrollUp"
     elif variant == "ScrollDown":
@@ -117,7 +119,7 @@ def summarize_action(action: dict) -> str:
     elif variant == "Reload":
         return "Reload"
     else:
-        return variant  # fallback for unknown actions
+        return variant
 
 
 # --- deduplicate edges at cluster level ---
@@ -142,7 +144,6 @@ with open(dot_path, "w") as f:
     f.write("  node [shape=none, labelloc=b, fontsize=48];\n")
     f.write("  edge [splines=curved, fontsize=32];\n")
 
-    # nodes = clusters
     for ci, cluster in enumerate(clusters):
         cluster_size = len(cluster)
         label = f"Cluster {ci} ({cluster_size})"
@@ -152,10 +153,9 @@ with open(dot_path, "w") as f:
         else:
             f.write(f'  "{ci}" [label="{label}"];\n')
 
-    # edges
     for ci, cj, action in edge_set:
         if ci == cj:
-            continue  # skip self-loops if you want
+            continue
         label = action.replace('"', '\\"') if action else ""
         f.write(f'  "{ci}" -> "{cj}" [label="{label}"];\n')
 
