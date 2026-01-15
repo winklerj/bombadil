@@ -207,7 +207,7 @@ impl Browser {
             Box::pin(browser_events),
             receiver_to_stream(inner_events_receiver),
         ]);
-        run_state_machine(context, events_all, done_sender).await?;
+        run_state_machine(context, events_all, done_sender);
 
         Ok(Browser {
             browser,
@@ -242,14 +242,17 @@ impl state_machine::StateMachine for Browser {
             mut browser,
             ..
         } = self;
-        shutdown_sender
-            .send(())
-            .map_err(|_| anyhow!("failed to send done signal"))?;
-        done_receiver.await?;
+        if let Ok(()) = shutdown_sender.send(()) {
+            done_receiver.await?;
+            log::info!("received done, killing browser...");
+        } else {
+            log::warn!("couldn't send shutdown signal and receive done signal, killing browser anyway...");
+        }
         browser.close().await?;
         if let Some(exit_code) = browser.wait().await? {
             log::info!("browser exited with code {}", exit_code)
         }
+        log::info!("terminate end");
         Ok(())
     }
 
@@ -456,14 +459,14 @@ async fn inner_events(
     ])))
 }
 
-async fn run_state_machine(
+fn run_state_machine(
     mut context: BrowserContext,
     mut events: impl stream::Stream<Item = InnerEvent> + Send + Unpin + 'static,
     done_sender: oneshot::Sender<()>,
-) -> Result<()> {
+) {
     spawn(async move {
-        let mut state_current = InnerState::Initial;
-        async {
+        let result = (async || {
+            let mut state_current = InnerState::Initial;
             loop {
                 select! {
                     _ = &mut context.shutdown_receiver => {
@@ -472,34 +475,28 @@ async fn run_state_machine(
                     },
                     event = events.next() => match event {
                         Some(event) => {
-                            match process_event(&context, state_current, event)
-                                .await
-                            {
-                                Ok(state_new) => state_current = state_new,
-                                Err(err) => {
-                                    context.sender.send(
-                                        state_machine::Event::Error(Arc::new(
-                                            anyhow!("process_event: {:?}", err),
-                                        )),
-                                    )?;
-                                    break;
-                                }
-                            }
+                            state_current = process_event(&context, state_current, event).await?;
                         }
                         None => {
-                            info!("no more events, closing state machine loop");
+                            info!("no more events, shutting down state machine loop");
                             break;
                         }
                     }
                 }
             }
-            done_sender.send(()).expect("failed to send done signal");
+            let _ = done_sender.send(());
             Ok::<(), anyhow::Error>(())
+        })().await;
+        if let Err(error) = result {
+            context
+                .sender
+                .send(state_machine::Event::Error(Arc::new(anyhow!(
+                    "error when processing event: {:?}",
+                    error
+                ))))
+                .expect("send state machine event failed");
         }
-        .await
     });
-
-    Ok(())
 }
 
 async fn process_event(
@@ -623,6 +620,7 @@ async fn process_event(
             // This gives us a chance to receive the "Debugger.paused" event and
             // resume (extracting the uncaught exception information).
             spawn(async move {
+                log::info!("applying: {:?}", browser_action);
                 match action.apply(&page).await {
                     Ok(_) => {}
                     Err(err) => {

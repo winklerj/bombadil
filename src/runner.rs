@@ -28,6 +28,10 @@ pub struct TraceEntry {
     pub screenshot_path: PathBuf,
 }
 
+pub struct RunnerOptions {
+    pub stop_on_violation: bool,
+}
+
 #[derive(Debug, Clone)]
 pub enum RunEvent {
     NewTraceEntry {
@@ -38,6 +42,7 @@ pub enum RunEvent {
 
 pub struct Runner {
     origin: Url,
+    options: RunnerOptions,
     browser: Browser,
     proxy: Proxy,
     events: broadcast::Sender<RunEvent>,
@@ -50,6 +55,7 @@ pub struct Runner {
 impl Runner {
     pub async fn new(
         origin: Url,
+        options: RunnerOptions,
         browser_options: &BrowserOptions,
     ) -> anyhow::Result<Self> {
         let (events, _) = broadcast::channel(16);
@@ -65,6 +71,7 @@ impl Runner {
 
         Ok(Runner {
             origin,
+            options,
             browser,
             proxy,
             events,
@@ -78,6 +85,7 @@ impl Runner {
     pub fn start(self) -> RunEvents {
         let Runner {
             origin,
+            options,
             mut browser,
             proxy,
             events,
@@ -91,19 +99,32 @@ impl Runner {
         let events_receiver = events.subscribe();
 
         spawn(async move {
-            let result = async {
+            let run = async || {
                 browser.initiate().await?;
-                Runner::run_test(
+                log::info!("browser initiated");
+                let result = Runner::run_test(
                     origin,
-                    browser,
-                    proxy,
+                    options,
+                    &mut browser,
                     events,
                     shutdown_receiver,
                 )
-                .await
-            }
-            .await;
+                .await;
+                log::info!("test finished");
+                result
+            };
+            let result = run().await;
 
+            log::info!("shutting down after result: {:?}", &result);
+            browser
+                .terminate()
+                .await
+                .expect("browser failed to terminate");
+            log::info!("stopping proxy");
+            proxy.stop();
+            log::info!("browser and proxy have been shut down");
+
+            log::info!("signaling that we're done...");
             done_sender
                 .send(result)
                 .expect("couldn't send runner completion")
@@ -118,8 +139,8 @@ impl Runner {
 
     async fn run_test(
         origin: Url,
-        mut browser: Browser,
-        proxy: Proxy,
+        options: RunnerOptions,
+        browser: &mut Browser,
         events: broadcast::Sender<RunEvent>,
         mut shutdown: oneshot::Receiver<()>,
     ) -> anyhow::Result<()> {
@@ -131,10 +152,6 @@ impl Runner {
         loop {
             select! {
                 _ = &mut shutdown => {
-                    log::info!("shutting down...");
-                    browser.terminate().await?;
-                    proxy.stop();
-                    log::info!("browser and proxy have been shut down");
                     return Ok(())
                 },
                 event = timeout( last_action_timeout.to_duration(), browser.next_event() ) => match event {
@@ -192,8 +209,11 @@ impl Runner {
                             };
                             events.send(RunEvent::NewTraceEntry {
                                 entry: entry.clone(),
-                                violation,
+                                violation: violation.clone(),
                             })?;
+                            if let Some(violation) = violation && options.stop_on_violation {
+                                anyhow::bail!("stopping due to {}", violation);
+                            }
 
                             hash_previous = state.transition_hash;
 
@@ -246,10 +266,11 @@ impl RunEvents {
         }
     }
 
+    /// Shuts down the runner, waiting for it to finish and clean up. Returns an Err when some
+    /// non-recoverable error occured, as opposed to test violations which are sent in trace events.
     pub async fn shutdown(mut self) -> anyhow::Result<()> {
-        self.shutdown
-            .send(())
-            .map_err(|_| anyhow::anyhow!("sending shutdown signal failed"))?;
+        // If we can't send the signal, it means the receiver has already been dropped.
+        let _ = self.shutdown.send(());
         (&mut self.done).await?
     }
 }

@@ -8,7 +8,9 @@ use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
 use antithesis_browser::{
-    browser::BrowserOptions, proxy::Proxy, runner::Runner,
+    browser::BrowserOptions,
+    proxy::Proxy,
+    runner::{Runner, RunnerOptions},
 };
 
 #[derive(Parser)]
@@ -91,7 +93,14 @@ async fn main() -> Result<()> {
                 no_sandbox,
                 proxy: None,
             };
-            let runner = Runner::new(origin.url, &browser_options).await?;
+            let runner = Runner::new(
+                origin.url,
+                RunnerOptions {
+                    stop_on_violation: exit_on_violation,
+                },
+                &browser_options,
+            )
+            .await?;
             let mut events = runner.start();
 
             let mut trace_file = File::options()
@@ -105,51 +114,51 @@ async fn main() -> Result<()> {
             let exit_code: anyhow::Result<Option<i32>> = async {
                 loop {
                     match events.next().await {
-                    Ok(Some(
-                        antithesis_browser::runner::RunEvent::NewTraceEntry {
-                            entry,
-                            violation,
-                        },
-                    )) => {
-                        log::debug!("new trace entry: {:?}", entry);
+                        Ok(Some(
+                            antithesis_browser::runner::RunEvent::NewTraceEntry {
+                                entry,
+                                violation,
+                            },
+                        )) => {
+                            log::debug!("new trace entry: {:?}", entry);
 
-                        let screenshot_path = screenshots_dir_path.join(
-                            entry
-                                .screenshot_path
-                                .file_name()
-                                .expect("screenshot must have a file name"),
-                        );
-                        // TODO: keep screenshot in memory until this point, no need to copy.
-                        tokio::fs::copy(
-                            &entry.screenshot_path,
-                            &screenshot_path,
-                        )
-                        .await?;
-
-                        trace_file
-                            .write(json::to_string(&entry)?.as_bytes())
+                            let screenshot_path = screenshots_dir_path.join(
+                                entry
+                                    .screenshot_path
+                                    .file_name()
+                                    .expect("screenshot must have a file name"),
+                            );
+                            // TODO: keep screenshot in memory until this point, no need to copy.
+                            tokio::fs::copy(
+                                &entry.screenshot_path,
+                                &screenshot_path,
+                            )
                             .await?;
-                        trace_file.write_u8(b'\n').await?;
 
-                        if let Some(hash) = entry.hash_current {
-                            log::info!("got new transition hash: {:?}", hash);
-                        };
+                            trace_file
+                                .write(json::to_string(&entry)?.as_bytes())
+                                .await?;
+                            trace_file.write_u8(b'\n').await?;
 
-                        if let Some(violation) = violation {
-                            if exit_on_violation {
-                                eprintln!("violation: {}", violation);
-                                break Ok(Some(2));
-                            } else {
-                                log::error!("violation: {}", violation);
+                            if let Some(hash) = entry.hash_current {
+                                log::info!("got new transition hash: {:?}", hash);
+                            };
+
+                            if let Some(violation) = violation {
+                                if exit_on_violation {
+                                    log::error!("violation: {}", violation);
+                                    break Ok(Some(2));
+                                } else {
+                                    log::error!("violation: {}", violation);
+                                }
                             }
                         }
+                        Ok(None) => break Ok(None),
+                        Err(err) => {
+                            eprintln!("next run event failure: {}", err);
+                            break Ok(Some(1));
+                        }
                     }
-                    Ok(None) => break Ok(None),
-                    Err(err) => {
-                        eprintln!("{}", err);
-                        break Ok(Some(1));
-                    }
-                }
                 }
             }
             .await;

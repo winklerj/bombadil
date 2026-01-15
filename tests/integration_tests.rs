@@ -1,17 +1,17 @@
 use axum::Router;
-use std::{fmt::Display, time::Duration};
+use std::{fmt::Display, sync::Once, time::Duration};
 use tempfile::TempDir;
 use tower_http::services::ServeDir;
 use url::Url;
 
 use antithesis_browser::{
-    browser::BrowserOptions,
-    runner::{Runner, Violation},
+    browser::{actions::BrowserAction, Browser, BrowserOptions},
+    runner::{Runner, RunnerOptions},
+    state_machine::StateMachine,
 };
 
 enum Expect {
     Error { substring: &'static str },
-    Violation { substring: &'static str },
     Success,
 }
 
@@ -21,14 +21,21 @@ impl Display for Expect {
             Expect::Error { substring } => {
                 write!(f, "expecting an error with substring {:?}", substring)
             }
-            Expect::Violation { substring } => write!(
-                f,
-                "expecting a violation with substring {:?}",
-                substring
-            ),
             Expect::Success => write!(f, "expecting success"),
         }
     }
+}
+
+static INIT: Once = Once::new();
+
+fn setup() {
+    INIT.call_once(|| {
+        let env = env_logger::Env::default().default_filter_or("warn");
+        env_logger::Builder::from_env(env)
+            .format_timestamp_millis()
+            .format_target(true)
+            .init();
+    });
 }
 
 /// Run a named browser test with a given expectation.
@@ -42,6 +49,7 @@ impl Display for Expect {
 ///
 /// Which means that every named test case directory should have an index.html file.
 async fn run_browser_test(name: &str, expect: Expect, timeout: Duration) {
+    setup();
     let app = Router::new().fallback_service(ServeDir::new("./tests"));
     let app_other = app.clone();
 
@@ -76,6 +84,9 @@ async fn run_browser_test(name: &str, expect: Expect, timeout: Duration) {
 
     let runner = Runner::new(
         origin,
+        RunnerOptions {
+            stop_on_violation: true,
+        },
         &BrowserOptions {
             headless: true,
             no_sandbox: false,
@@ -90,28 +101,21 @@ async fn run_browser_test(name: &str, expect: Expect, timeout: Duration) {
 
     let mut events = runner.start();
 
-    let violation = async move {
+    let result = async {
         loop {
             match events.next().await {
-                Ok(Some(
-                    antithesis_browser::runner::RunEvent::NewTraceEntry {
-                        entry: _,
-                        violation,
-                    },
-                )) => {
-                    if violation.is_some() {
-                        return Ok(violation);
-                    }
+                Ok(Some(_event)) => {}
+                Ok(None) => break events.shutdown().await,
+                Err(err) => {
+                    log::error!("next event error: {}", err);
+                    break events.shutdown().await;
                 }
-                Ok(None) => return Ok(None),
-                Err(err) => anyhow::bail!(err),
             }
         }
     };
 
     enum Outcome {
         Success,
-        Violation(Violation),
         Error(anyhow::Error),
         Timeout,
     }
@@ -120,9 +124,6 @@ async fn run_browser_test(name: &str, expect: Expect, timeout: Duration) {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
                 Outcome::Success => write!(f, "success"),
-                Outcome::Violation(violation) => {
-                    write!(f, "violation: {}", violation)
-                }
                 Outcome::Error(error) => {
                     write!(f, "error: {}", error)
                 }
@@ -131,22 +132,13 @@ async fn run_browser_test(name: &str, expect: Expect, timeout: Duration) {
         }
     }
 
-    let outcome = match tokio::time::timeout(timeout, violation).await {
-        Ok(Ok(None)) => Outcome::Success,
-        Ok(Ok(Some(violation))) => Outcome::Violation(violation),
+    let outcome = match tokio::time::timeout(timeout, result).await {
+        Ok(Ok(())) => Outcome::Success,
         Ok(Err(error)) => Outcome::Error(error),
         Err(_elapsed) => Outcome::Timeout,
     };
 
     match (outcome, expect) {
-        (Outcome::Violation(violation), Expect::Violation { substring }) => {
-            if !violation.to_string().contains(substring) {
-                panic!(
-                    "expected violation message not found in: {}",
-                    violation
-                );
-            }
-        }
         (Outcome::Error(error), Expect::Error { substring }) => {
             if !error.to_string().contains(substring) {
                 panic!("expected error message not found in: {}", error);
@@ -164,7 +156,7 @@ async fn run_browser_test(name: &str, expect: Expect, timeout: Duration) {
 async fn test_console_error() {
     run_browser_test(
         "console-error",
-        Expect::Violation {
+        Expect::Error {
             substring: "oh no you pressed all of them",
         },
         Duration::from_secs(10),
@@ -176,7 +168,7 @@ async fn test_console_error() {
 async fn test_links() {
     run_browser_test(
         "links",
-        Expect::Violation {
+        Expect::Error {
             substring: "got 404 at localhost",
         },
         Duration::from_secs(5),
@@ -188,7 +180,7 @@ async fn test_links() {
 async fn test_uncaught_exception() {
     run_browser_test(
         "uncaught-exception",
-        Expect::Violation {
+        Expect::Error {
             substring: "oh no you pressed all of them",
         },
         Duration::from_secs(10),
@@ -200,7 +192,7 @@ async fn test_uncaught_exception() {
 async fn test_unhandled_promise_rejection() {
     run_browser_test(
         "unhandled-promise-rejection",
-        Expect::Violation {
+        Expect::Error {
             substring: "oh no you pressed all of them",
         },
         Duration::from_secs(10),
@@ -224,4 +216,61 @@ async fn test_no_action_available() {
         Duration::from_secs(3),
     )
     .await;
+}
+
+#[tokio::test]
+async fn test_browser_lifecycle() {
+    setup();
+    let app = Router::new().fallback_service(ServeDir::new("./tests"));
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let port = addr.port();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let origin =
+        Url::parse(&format!("http://localhost:{}/console-error", port,))
+            .unwrap();
+    log::info!("running test server on {}", &origin);
+    let user_data_directory = TempDir::new().unwrap();
+
+    let mut browser = Browser::new(
+        origin,
+        &BrowserOptions {
+            headless: true,
+            no_sandbox: false,
+            user_data_directory: user_data_directory.path().to_path_buf(),
+            width: 800,
+            height: 600,
+            proxy: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    browser.initiate().await.unwrap();
+
+    match browser.next_event().await.unwrap() {
+        antithesis_browser::state_machine::Event::StateChanged(state) => {
+            assert_eq!(state.title, "Console Error");
+        }
+        antithesis_browser::state_machine::Event::Error(error) => {
+            panic!("unexpected browser error: {}", error)
+        }
+    }
+
+    browser.apply(BrowserAction::Reload).await.unwrap();
+
+    match browser.next_event().await.unwrap() {
+        antithesis_browser::state_machine::Event::StateChanged(state) => {
+            assert_eq!(state.title, "Console Error");
+        }
+        antithesis_browser::state_machine::Event::Error(error) => {
+            panic!("unexpected browser error: {}", error)
+        }
+    }
+
+    browser.terminate().await.unwrap();
 }
