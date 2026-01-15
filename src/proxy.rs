@@ -29,6 +29,7 @@ use oxc::span::SourceType;
 use std::{
     convert::Infallible,
     hash::{DefaultHasher, Hash, Hasher},
+    io::ErrorKind,
     net::SocketAddr,
     str::from_utf8,
 };
@@ -138,13 +139,14 @@ async fn start_proxy(
 async fn proxy_https(req: Request) -> Result<Response, hyper::Error> {
     log::trace!("{:?}", req);
 
+    let uri = req.uri().clone();
     if let Some(host_addr) = req.uri().authority().map(|auth| auth.to_string())
     {
         tokio::task::spawn(async move {
             match hyper::upgrade::on(req).await {
                 Ok(upgraded) => {
                     if let Err(e) = tunnel(upgraded, host_addr).await {
-                        log::warn!("server io error: {}", e);
+                        log::warn!("server io error ({:?}): {}", uri, e);
                     };
                 }
                 Err(e) => log::warn!("upgrade error: {}", e),
@@ -166,14 +168,21 @@ async fn tunnel(upgraded: Upgraded, addr: String) -> std::io::Result<()> {
     let mut server = TcpStream::connect(addr).await?;
     let mut upgraded = TokioIo::new(upgraded);
 
-    let (from_client, from_server) =
-        tokio::io::copy_bidirectional(&mut upgraded, &mut server).await?;
-
-    log::debug!(
-        "client wrote {} bytes and received {} bytes",
-        from_client,
-        from_server
-    );
+    match tokio::io::copy_bidirectional(&mut upgraded, &mut server).await {
+        Ok((from_client, from_server)) => {
+            log::debug!(
+                "client wrote {} bytes and received {} bytes",
+                from_client,
+                from_server
+            );
+        }
+        Err(error)
+            if matches!(
+                error.kind(),
+                ErrorKind::BrokenPipe | ErrorKind::ConnectionReset
+            ) => {}
+        Err(error) => return Err(error),
+    }
 
     Ok(())
 }
