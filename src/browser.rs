@@ -628,7 +628,19 @@ async fn process_event(
             });
             InnerState::Running(vec![])
         }
-        (InnerState::Loading(console_entries), InnerEvent::Loaded) => {
+        (state, InnerEvent::Loaded) => {
+            // We *should* only get the `Loaded` event when we're in `Loading`, but for some reason,
+            // maybe something Chrome-related, we sometimes see it in `Initial` and `Navigating`
+            // too. Maybe some race or that events are dropped.
+            let console_entries = match &state {
+                InnerState::Pausing(console_entries) => console_entries.clone(),
+                InnerState::Initial => vec![],
+                InnerState::Paused => vec![],
+                InnerState::Resuming(_) => vec![],
+                InnerState::Navigating => vec![],
+                InnerState::Loading(console_entries) => console_entries.clone(),
+                InnerState::Running(console_entries) => console_entries.clone(),
+            };
             context
                 .inner_events_sender
                 .send(InnerEvent::StateRequested)?;
