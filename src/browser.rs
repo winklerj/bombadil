@@ -225,6 +225,7 @@ impl state_machine::StateMachine for Browser {
         let page = self.page.clone();
         let origin = self.origin.to_string();
         spawn(async move {
+            log::info!("going to origin");
             let _ = page.goto(origin).await;
         });
         Ok(())
@@ -462,6 +463,7 @@ fn run_state_machine(
     spawn(async move {
         let result = (async || {
             let mut state_current = InnerState::Initial;
+            log::info!("processing events");
             loop {
                 select! {
                     _ = &mut context.shutdown_receiver => {

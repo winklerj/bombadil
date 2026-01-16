@@ -37,6 +37,7 @@ fn setup() {
         env_logger::Builder::from_env(env)
             .format_timestamp_millis()
             .format_target(true)
+            .is_test(true)
             // Until we hav a fix for https://github.com/mattsse/chromiumoxide/issues/287
             .filter_module("chromiumoxide::browser", log::LevelFilter::Error)
             .init();
@@ -166,7 +167,7 @@ async fn test_console_error() {
     run_browser_test(
         "console-error",
         Expect::Error {
-            substring: "oh no you pressed all of them",
+            substring: "oh no you pressed too much",
         },
         Duration::from_secs(10),
     )
@@ -190,7 +191,7 @@ async fn test_uncaught_exception() {
     run_browser_test(
         "uncaught-exception",
         Expect::Error {
-            substring: "oh no you pressed all of them",
+            substring: "oh no you pressed too much",
         },
         Duration::from_secs(10),
     )
@@ -202,7 +203,7 @@ async fn test_unhandled_promise_rejection() {
     run_browser_test(
         "unhandled-promise-rejection",
         Expect::Error {
-            substring: "oh no you pressed all of them",
+            substring: "oh no you pressed too much",
         },
         Duration::from_secs(10),
     )
