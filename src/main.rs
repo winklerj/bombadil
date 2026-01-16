@@ -1,10 +1,7 @@
 use ::url::Url;
 use anyhow::Result;
 use clap::Parser;
-use std::{
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::{path::PathBuf, str::FromStr};
 use tempfile::TempDir;
 
 use antithesis_browser::{
