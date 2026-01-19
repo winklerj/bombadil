@@ -22,7 +22,7 @@ with open(trace_file) as f:
                 "url": t.get("url"),
                 "prev": t.get("hash_previous"),
                 "curr": t.get("hash_current"),
-                "screenshot": t.get("screenshot_path"),
+                "screenshot": t.get("screenshot"),
                 "action": t.get("action"),
             }
         )
