@@ -46,6 +46,7 @@ impl fmt::Display for InstrumentationError {
 
 pub type InstrumentationResult<T> = Result<T, InstrumentationError>;
 
+#[derive(Copy, Clone)]
 pub struct SourceId(pub u64);
 
 pub const NAMESPACE: &'static str = "antithesis";

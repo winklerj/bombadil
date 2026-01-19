@@ -1,16 +1,22 @@
 use anyhow::{anyhow, bail, Context, Result};
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use chromiumoxide::browser::{BrowserConfigBuilder, HeadlessMode};
+use chromiumoxide::cdp::browser_protocol::network;
 use chromiumoxide::cdp::browser_protocol::page::{
     self, ClientNavigationReason, FrameId, NavigationType,
 };
 use chromiumoxide::cdp::browser_protocol::target::{self, TargetId};
-use chromiumoxide::cdp::browser_protocol::{dom, emulation};
+use chromiumoxide::cdp::browser_protocol::{dom, emulation, fetch};
 use chromiumoxide::cdp::js_protocol::debugger::{self, CallFrameId};
 use chromiumoxide::cdp::js_protocol::runtime::{self};
 use chromiumoxide::{BrowserConfig, Page};
 use futures::{stream, StreamExt};
 use log;
+use oxc::span::SourceType;
 use serde_json as json;
+use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -26,7 +32,7 @@ use url::Url;
 
 use crate::browser::actions::BrowserAction;
 use crate::browser::state::{BrowserState, ConsoleEntry, Exception};
-use crate::state_machine;
+use crate::{instrumentation, state_machine};
 
 pub mod actions;
 pub mod evaluation;
@@ -227,6 +233,8 @@ impl Browser {
             frame_id,
             origin: origin.clone(),
         };
+
+        instrument_coverage(page.clone()).await?;
 
         let browser_events = browser
             .event_listener::<target::EventTargetDestroyed>()
@@ -902,4 +910,132 @@ async fn find_page(browser: &mut chromiumoxide::Browser) -> Result<Page> {
         }
     }
     bail!("coulnd't find an existing page to use");
+}
+
+async fn instrument_coverage(page: Arc<Page>) -> Result<()> {
+    page.execute(
+        fetch::EnableParams::builder()
+            .pattern(
+                fetch::RequestPattern::builder()
+                    .request_stage(fetch::RequestStage::Response)
+                    .resource_type(network::ResourceType::Script)
+                    .build(),
+            )
+            .build(),
+    )
+    .await
+    .context("failed enabling request interception")?;
+
+    let mut events = page.event_listener::<fetch::EventRequestPaused>().await?;
+
+    let _ = spawn(async move {
+        let intercept =
+            async |event: &fetch::EventRequestPaused| -> Result<()> {
+                assert!(
+                    event.resource_type == network::ResourceType::Script,
+                    "should only intercept script resources"
+                );
+
+                // Any non-200 upstream response is forwarded as-is.
+                if let Some(status) = event.response_status_code
+                    && status != 200
+                {
+                    return page
+                        .execute(
+                            fetch::ContinueRequestParams::builder()
+                                .request_id(event.request_id.clone())
+                                .build()
+                                .map_err(|error| {
+                                    anyhow!(
+                                    "failed building ContinueRequestParams: {}",
+                                    error
+                                )
+                                })?,
+                        )
+                        .await
+                        .map(|_| ())
+                        .context("failed continuing request");
+                }
+
+                let headers: HashMap<String, String> =
+                    json::from_value(event.request.headers.inner().clone())?;
+
+                let body_response = page
+                    .execute(
+                        fetch::GetResponseBodyParams::builder()
+                            .request_id(event.request_id.clone())
+                            .build()
+                            .map_err(|error| {
+                                anyhow!(
+                                    "failed building GetResponseBodyParams: {}",
+                                    error
+                                )
+                            })?,
+                    )
+                    .await
+                    .context("failed getting response body")?;
+
+                let body = if body_response.base64_encoded {
+                    let bytes = body_response.body.as_bytes();
+                    String::from_utf8(BASE64_STANDARD.decode(bytes)?)?
+                } else {
+                    body_response.body.clone()
+                };
+
+                let source_id = source_id(headers, &body);
+                let body_instrumented =
+                    instrumentation::instrument_source_code(
+                        source_id,
+                        &body,
+                        SourceType::cjs(),
+                    )?;
+
+                page.execute(
+                    fetch::FulfillRequestParams::builder()
+                        .request_id(event.request_id.clone())
+                        .body(BASE64_STANDARD.encode(body_instrumented))
+                        .response_code(200)
+                        .response_header(fetch::HeaderEntry {
+                            name: "etag".to_string(),
+                            value: format!("{}", source_id.0),
+                        })
+                        // TODO: forward headers
+                        .build()
+                        .map_err(|error| {
+                            anyhow!(
+                                "failed building FulfillRequestParams: {}",
+                                error
+                            )
+                        })?,
+                )
+                .await
+                .context("failed fulfilling request")?;
+                log::info!(
+                    "intercepted and instrumented request: {}",
+                    event.request.url
+                );
+                Ok(())
+            };
+        while let Some(event) = events.next().await {
+            if let Err(error) = intercept(&event).await {
+                log::error!("failed to instrument requested script: {error}");
+            }
+        }
+    });
+
+    Ok(())
+}
+
+/// Calculate source ID from etag or body.
+fn source_id(
+    headers: HashMap<String, String>,
+    body: &str,
+) -> instrumentation::SourceId {
+    let mut hasher = DefaultHasher::new();
+    if let Some(etag) = headers.get("etag") {
+        etag.hash(&mut hasher);
+    } else {
+        body.hash(&mut hasher);
+    };
+    instrumentation::SourceId(hasher.finish())
 }

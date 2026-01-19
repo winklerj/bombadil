@@ -310,6 +310,14 @@ rec {
             packageId = "axum";
           }
           {
+            name = "base64";
+            packageId = "base64";
+          }
+          {
+            name = "bytes";
+            packageId = "bytes";
+          }
+          {
             name = "chromiumoxide";
             packageId = "chromiumoxide";
           }
@@ -329,6 +337,10 @@ rec {
           {
             name = "futures";
             packageId = "futures";
+          }
+          {
+            name = "html5ever";
+            packageId = "html5ever";
           }
           {
             name = "http";
@@ -2457,6 +2469,28 @@ rec {
         sha256 = "1sjmpsdl8czyh9ywl3qcsfsq9a307dg4ni2vnlwgnzzqhc4y0113";
 
       };
+      "html5ever" = rec {
+        crateName = "html5ever";
+        version = "0.37.1";
+        edition = "2021";
+        sha256 = "0xjcwmi0wl3x9npa1xwnx4lxc6fasyrw49zcbzqkz0h2vhpz0dar";
+        authors = [
+          "The html5ever Project Developers"
+        ];
+        dependencies = [
+          {
+            name = "log";
+            packageId = "log";
+          }
+          {
+            name = "markup5ever";
+            packageId = "markup5ever";
+          }
+        ];
+        features = {
+          "serde" = [ "markup5ever/serde" ];
+        };
+      };
       "http" = rec {
         crateName = "http";
         version = "1.4.0";
@@ -3561,6 +3595,28 @@ rec {
           "yoke" = [ "dep:yoke" ];
         };
       };
+      "lock_api" = rec {
+        crateName = "lock_api";
+        version = "0.4.14";
+        edition = "2021";
+        sha256 = "0rg9mhx7vdpajfxvdjmgmlyrn20ligzqvn8ifmaz7dc79gkrjhr2";
+        authors = [
+          "Amanieu d'Antras <amanieu@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "scopeguard";
+            packageId = "scopeguard";
+            usesDefaultFeatures = false;
+          }
+        ];
+        features = {
+          "default" = [ "atomic_usize" ];
+          "owning_ref" = [ "dep:owning_ref" ];
+          "serde" = [ "dep:serde" ];
+        };
+        resolvedDefaultFeatures = [ "atomic_usize" "default" ];
+      };
       "log" = rec {
         crateName = "log";
         version = "0.4.29";
@@ -3584,6 +3640,33 @@ rec {
           "value-bag" = [ "dep:value-bag" ];
         };
         resolvedDefaultFeatures = [ "std" ];
+      };
+      "markup5ever" = rec {
+        crateName = "markup5ever";
+        version = "0.37.1";
+        edition = "2021";
+        sha256 = "10xhyplvp9nfsh29rds7klcg5i5fbz8ffnm5m4dkpn6m2bm37yvw";
+        libPath = "lib.rs";
+        authors = [
+          "The html5ever Project Developers"
+        ];
+        dependencies = [
+          {
+            name = "log";
+            packageId = "log";
+          }
+          {
+            name = "tendril";
+            packageId = "tendril";
+          }
+          {
+            name = "web_atoms";
+            packageId = "web_atoms";
+          }
+        ];
+        features = {
+          "serde" = [ "web_atoms/serde" ];
+        };
       };
       "matchers" = rec {
         crateName = "matchers";
@@ -3745,6 +3828,18 @@ rec {
           "os-ext" = [ "os-poll" "windows-sys/Win32_System_Pipes" "windows-sys/Win32_Security" ];
         };
         resolvedDefaultFeatures = [ "net" "os-ext" "os-poll" ];
+      };
+      "new_debug_unreachable" = rec {
+        crateName = "new_debug_unreachable";
+        version = "1.0.6";
+        edition = "2021";
+        sha256 = "11phpf1mjxq6khk91yzcbd3ympm78m3ivl7xg6lg2c0lf66fy3k5";
+        libName = "debug_unreachable";
+        authors = [
+          "Matt Brubeck <mbrubeck@limpet.net>"
+          "Jonathan Reem <jonathan.reem@gmail.com>"
+        ];
+
       };
       "nonmax" = rec {
         crateName = "nonmax";
@@ -4209,7 +4304,7 @@ rec {
         dependencies = [
           {
             name = "phf";
-            packageId = "phf";
+            packageId = "phf 0.12.1";
           }
           {
             name = "proc-macro2";
@@ -4605,7 +4700,7 @@ rec {
           }
           {
             name = "phf";
-            packageId = "phf";
+            packageId = "phf 0.12.1";
             features = [ "macros" ];
           }
           {
@@ -4676,7 +4771,7 @@ rec {
           }
           {
             name = "phf";
-            packageId = "phf";
+            packageId = "phf 0.12.1";
             features = [ "macros" ];
           }
           {
@@ -4691,7 +4786,7 @@ rec {
         devDependencies = [
           {
             name = "phf";
-            packageId = "phf";
+            packageId = "phf 0.12.1";
             features = [ "macros" ];
           }
           {
@@ -4834,7 +4929,7 @@ rec {
           }
           {
             name = "phf";
-            packageId = "phf";
+            packageId = "phf 0.12.1";
             features = [ "macros" ];
           }
           {
@@ -4906,6 +5001,72 @@ rec {
         ];
 
       };
+      "parking_lot" = rec {
+        crateName = "parking_lot";
+        version = "0.12.5";
+        edition = "2021";
+        sha256 = "06jsqh9aqmc94j2rlm8gpccilqm6bskbd67zf6ypfc0f4m9p91ck";
+        authors = [
+          "Amanieu d'Antras <amanieu@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "lock_api";
+            packageId = "lock_api";
+          }
+          {
+            name = "parking_lot_core";
+            packageId = "parking_lot_core";
+          }
+        ];
+        features = {
+          "arc_lock" = [ "lock_api/arc_lock" ];
+          "deadlock_detection" = [ "parking_lot_core/deadlock_detection" ];
+          "nightly" = [ "parking_lot_core/nightly" "lock_api/nightly" ];
+          "owning_ref" = [ "lock_api/owning_ref" ];
+          "serde" = [ "lock_api/serde" ];
+        };
+        resolvedDefaultFeatures = [ "default" ];
+      };
+      "parking_lot_core" = rec {
+        crateName = "parking_lot_core";
+        version = "0.9.12";
+        edition = "2021";
+        sha256 = "1hb4rggy70fwa1w9nb0svbyflzdc69h047482v2z3sx2hmcnh896";
+        authors = [
+          "Amanieu d'Antras <amanieu@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "cfg-if";
+            packageId = "cfg-if";
+          }
+          {
+            name = "libc";
+            packageId = "libc";
+            target = { target, features }: (target."unix" or false);
+          }
+          {
+            name = "redox_syscall";
+            packageId = "redox_syscall";
+            target = { target, features }: ("redox" == target."os" or null);
+          }
+          {
+            name = "smallvec";
+            packageId = "smallvec";
+          }
+          {
+            name = "windows-link";
+            packageId = "windows-link 0.2.1";
+            target = { target, features }: (target."windows" or false);
+          }
+        ];
+        features = {
+          "backtrace" = [ "dep:backtrace" ];
+          "deadlock_detection" = [ "petgraph" "backtrace" ];
+          "petgraph" = [ "dep:petgraph" ];
+        };
+      };
       "percent-encoding" = rec {
         crateName = "percent-encoding";
         version = "2.3.2";
@@ -4969,7 +5130,7 @@ rec {
         };
         resolvedDefaultFeatures = [ "stable_graph" "std" ];
       };
-      "phf" = rec {
+      "phf 0.12.1" = rec {
         crateName = "phf";
         version = "0.12.1";
         edition = "2021";
@@ -4985,7 +5146,7 @@ rec {
           }
           {
             name = "phf_shared";
-            packageId = "phf_shared";
+            packageId = "phf_shared 0.12.1";
             usesDefaultFeatures = false;
           }
           {
@@ -5006,7 +5167,59 @@ rec {
         };
         resolvedDefaultFeatures = [ "default" "macros" "phf_macros" "std" ];
       };
-      "phf_generator" = rec {
+      "phf 0.13.1" = rec {
+        crateName = "phf";
+        version = "0.13.1";
+        edition = "2021";
+        sha256 = "1pzswx5gdglgjgp4azyzwyr4gh031r0kcnpqq6jblga72z3jsmn1";
+        authors = [
+          "Steven Fackler <sfackler@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "phf_shared";
+            packageId = "phf_shared 0.13.1";
+            usesDefaultFeatures = false;
+          }
+          {
+            name = "serde";
+            packageId = "serde";
+            optional = true;
+            usesDefaultFeatures = false;
+          }
+        ];
+        features = {
+          "default" = [ "std" ];
+          "macros" = [ "phf_macros" ];
+          "phf_macros" = [ "dep:phf_macros" ];
+          "serde" = [ "dep:serde" ];
+          "std" = [ "phf_shared/std" "serde?/std" ];
+          "uncased" = [ "phf_macros?/uncased" "phf_shared/uncased" ];
+          "unicase" = [ "phf_macros?/unicase" "phf_shared/unicase" ];
+        };
+        resolvedDefaultFeatures = [ "default" "std" ];
+      };
+      "phf_codegen" = rec {
+        crateName = "phf_codegen";
+        version = "0.13.1";
+        edition = "2021";
+        sha256 = "1qfnsl2hiny0yg4lwn888xla5iwccszgxnx8dhbwl6s2h2fpzaj9";
+        authors = [
+          "Steven Fackler <sfackler@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "phf_generator";
+            packageId = "phf_generator 0.13.1";
+          }
+          {
+            name = "phf_shared";
+            packageId = "phf_shared 0.13.1";
+          }
+        ];
+
+      };
+      "phf_generator 0.12.1" = rec {
         crateName = "phf_generator";
         version = "0.12.1";
         edition = "2021";
@@ -5023,13 +5236,36 @@ rec {
           }
           {
             name = "phf_shared";
-            packageId = "phf_shared";
+            packageId = "phf_shared 0.12.1";
             usesDefaultFeatures = false;
           }
         ];
         features = {
           "criterion" = [ "dep:criterion" ];
         };
+      };
+      "phf_generator 0.13.1" = rec {
+        crateName = "phf_generator";
+        version = "0.13.1";
+        edition = "2021";
+        crateBin = [];
+        sha256 = "0dwpp11l41dy9mag4phkyyvhpf66lwbp79q3ik44wmhyfqxcwnhk";
+        authors = [
+          "Steven Fackler <sfackler@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "fastrand";
+            packageId = "fastrand";
+            usesDefaultFeatures = false;
+          }
+          {
+            name = "phf_shared";
+            packageId = "phf_shared 0.13.1";
+            usesDefaultFeatures = false;
+          }
+        ];
+
       };
       "phf_macros" = rec {
         crateName = "phf_macros";
@@ -5043,11 +5279,11 @@ rec {
         dependencies = [
           {
             name = "phf_generator";
-            packageId = "phf_generator";
+            packageId = "phf_generator 0.12.1";
           }
           {
             name = "phf_shared";
-            packageId = "phf_shared";
+            packageId = "phf_shared 0.12.1";
             usesDefaultFeatures = false;
           }
           {
@@ -5071,7 +5307,7 @@ rec {
           "unicase_" = [ "dep:unicase_" ];
         };
       };
-      "phf_shared" = rec {
+      "phf_shared 0.12.1" = rec {
         crateName = "phf_shared";
         version = "0.12.1";
         edition = "2021";
@@ -5091,6 +5327,27 @@ rec {
           "unicase" = [ "dep:unicase" ];
         };
         resolvedDefaultFeatures = [ "std" ];
+      };
+      "phf_shared 0.13.1" = rec {
+        crateName = "phf_shared";
+        version = "0.13.1";
+        edition = "2021";
+        sha256 = "0rpjchnswm0x5l4mz9xqfpw0j4w68sjvyqrdrv13h7lqqmmyyzz5";
+        authors = [
+          "Steven Fackler <sfackler@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "siphasher";
+            packageId = "siphasher";
+          }
+        ];
+        features = {
+          "default" = [ "std" ];
+          "uncased" = [ "dep:uncased" ];
+          "unicase" = [ "dep:unicase" ];
+        };
+        resolvedDefaultFeatures = [ "default" "std" ];
       };
       "pin-project-lite" = rec {
         crateName = "pin-project-lite";
@@ -5189,6 +5446,17 @@ rec {
           "default" = [ "std" ];
         };
         resolvedDefaultFeatures = [ "simd" "std" ];
+      };
+      "precomputed-hash" = rec {
+        crateName = "precomputed-hash";
+        version = "0.1.1";
+        edition = "2015";
+        sha256 = "075k9bfy39jhs53cb2fpb9klfakx2glxnf28zdw08ws6lgpq6lwj";
+        libName = "precomputed_hash";
+        authors = [
+          "Emilio Cobos Álvarez <emilio@crisal.io>"
+        ];
+
       };
       "proc-macro2" = rec {
         crateName = "proc-macro2";
@@ -5336,6 +5604,28 @@ rec {
           "std" = [ "getrandom?/std" ];
         };
         resolvedDefaultFeatures = [ "os_rng" "std" ];
+      };
+      "redox_syscall" = rec {
+        crateName = "redox_syscall";
+        version = "0.5.18";
+        edition = "2021";
+        sha256 = "0b9n38zsxylql36vybw18if68yc9jczxmbyzdwyhb9sifmag4azd";
+        libName = "syscall";
+        authors = [
+          "Jeremy Soller <jackpot51@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "bitflags";
+            packageId = "bitflags";
+          }
+        ];
+        features = {
+          "core" = [ "dep:core" ];
+          "default" = [ "userspace" ];
+          "rustc-dep-of-std" = [ "core" "bitflags/rustc-dep-of-std" ];
+        };
+        resolvedDefaultFeatures = [ "default" "userspace" ];
       };
       "regex" = rec {
         crateName = "regex";
@@ -5846,6 +6136,18 @@ rec {
           "no-panic" = [ "dep:no-panic" ];
         };
       };
+      "scopeguard" = rec {
+        crateName = "scopeguard";
+        version = "1.2.0";
+        edition = "2015";
+        sha256 = "0jcz9sd47zlsgcnm1hdw0664krxwb5gczlif4qngj2aif8vky54l";
+        authors = [
+          "bluss"
+        ];
+        features = {
+          "default" = [ "use_std" ];
+        };
+      };
       "self_cell" = rec {
         crateName = "self_cell";
         version = "1.2.2";
@@ -6290,6 +6592,68 @@ rec {
         features = {
         };
       };
+      "string_cache" = rec {
+        crateName = "string_cache";
+        version = "0.9.0";
+        edition = "2018";
+        sha256 = "008rwf8gd1xhwr523r5zzzgypgkfmrz6l3wwh7r2k9w5qzw9d1d1";
+        authors = [
+          "The Servo Project Developers"
+        ];
+        dependencies = [
+          {
+            name = "new_debug_unreachable";
+            packageId = "new_debug_unreachable";
+          }
+          {
+            name = "parking_lot";
+            packageId = "parking_lot";
+          }
+          {
+            name = "phf_shared";
+            packageId = "phf_shared 0.13.1";
+          }
+          {
+            name = "precomputed-hash";
+            packageId = "precomputed-hash";
+          }
+        ];
+        features = {
+          "default" = [ "serde_support" ];
+          "malloc_size_of" = [ "dep:malloc_size_of" ];
+          "serde" = [ "dep:serde" ];
+          "serde_support" = [ "serde" ];
+        };
+      };
+      "string_cache_codegen" = rec {
+        crateName = "string_cache_codegen";
+        version = "0.6.1";
+        edition = "2018";
+        sha256 = "0scvya8dsfard2r8m7pb2cjnar312jc9g165fsghacdjdpj3amjq";
+        libPath = "lib.rs";
+        authors = [
+          "The Servo Project Developers"
+        ];
+        dependencies = [
+          {
+            name = "phf_generator";
+            packageId = "phf_generator 0.13.1";
+          }
+          {
+            name = "phf_shared";
+            packageId = "phf_shared 0.13.1";
+          }
+          {
+            name = "proc-macro2";
+            packageId = "proc-macro2";
+          }
+          {
+            name = "quote";
+            packageId = "quote";
+          }
+        ];
+
+      };
       "strsim" = rec {
         crateName = "strsim";
         version = "0.11.1";
@@ -6435,6 +6799,30 @@ rec {
           "getrandom" = [ "dep:getrandom" ];
         };
         resolvedDefaultFeatures = [ "default" "getrandom" ];
+      };
+      "tendril" = rec {
+        crateName = "tendril";
+        version = "0.5.0";
+        edition = "2021";
+        sha256 = "090dcvslanahwjnm4ihggjiv7fc82gir9c24nps319fmd71hyyf4";
+        authors = [
+          "Keegan McAllister <mcallister.keegan@gmail.com>"
+          "Simon Sapin <simon.sapin@exyr.org>"
+          "Chris Morgan <me@chrismorgan.info>"
+        ];
+        dependencies = [
+          {
+            name = "new_debug_unreachable";
+            packageId = "new_debug_unreachable";
+          }
+          {
+            name = "utf-8";
+            packageId = "utf-8";
+          }
+        ];
+        features = {
+          "encoding_rs" = [ "dep:encoding_rs" ];
+        };
       };
       "textwrap" = rec {
         crateName = "textwrap";
@@ -8443,6 +8831,40 @@ rec {
           "std" = [ "wasm-bindgen/std" "js-sys/std" ];
         };
         resolvedDefaultFeatures = [ "AbortController" "AbortSignal" "Blob" "BlobPropertyBag" "Event" "EventTarget" "File" "FormData" "Headers" "MessageEvent" "ReadableStream" "Request" "RequestCache" "RequestCredentials" "RequestInit" "RequestMode" "Response" "ServiceWorkerGlobalScope" "Window" "Worker" "WorkerGlobalScope" "default" "std" ];
+      };
+      "web_atoms" = rec {
+        crateName = "web_atoms";
+        version = "0.2.1";
+        edition = "2021";
+        sha256 = "0jmcincyxi2sd3xqkv57ch8fqxvqr5zhiay1bxgldhvv1kqqir9h";
+        libPath = "lib.rs";
+        authors = [
+          "The html5ever Project Developers"
+        ];
+        dependencies = [
+          {
+            name = "phf";
+            packageId = "phf 0.13.1";
+          }
+          {
+            name = "string_cache";
+            packageId = "string_cache";
+            usesDefaultFeatures = false;
+          }
+        ];
+        buildDependencies = [
+          {
+            name = "phf_codegen";
+            packageId = "phf_codegen";
+          }
+          {
+            name = "string_cache_codegen";
+            packageId = "string_cache_codegen";
+          }
+        ];
+        features = {
+          "serde" = [ "string_cache/serde_support" ];
+        };
       };
       "which" = rec {
         crateName = "which";
