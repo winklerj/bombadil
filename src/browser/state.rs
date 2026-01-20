@@ -1,4 +1,4 @@
-use crate::instrumentation::{
+use crate::instrumentation::js::{
     EDGES_CURRENT, EDGES_PREVIOUS, EDGE_MAP_SIZE, NAMESPACE,
 };
 use anyhow::{Context, Result};

@@ -1,0 +1,26 @@
+---
+source: src/instrumentation/html.rs
+expression: output
+---
+<!DOCTYPE html><html><head></head><body>
+<script>window.antithesis = window.antithesis || {
+    edges_previous: new Uint8Array(65536),
+    edges_current: new Uint8Array(65536),
+    previous: 0,
+};
+function example(a, b, c) {
+	return a ? (() => {
+		antithesis.edges_current[(0x22c1feea839d4200 ^ antithesis.previous) % 65536] += 1;
+		antithesis.previous = 0x22c1feea839d4200 >> 1;
+		return b;
+	})() : (() => {
+		antithesis.edges_current[(0x11b1b3220bdaeb00 ^ antithesis.previous) % 65536] += 1;
+		antithesis.previous = 0x11b1b3220bdaeb00 >> 1;
+		return c;
+	})();
+}
+console.log(example(true, 1, 2));
+</script>
+
+
+</body></html>

@@ -81,6 +81,7 @@ async fn main() -> Result<()> {
         .format_target(true)
         // Until we hav a fix for https://github.com/mattsse/chromiumoxide/issues/287
         .filter_module("chromiumoxide::browser", log::LevelFilter::Error)
+        .filter_module("html5ever", log::LevelFilter::Info)
         .init();
     let cli = CLI::parse();
     match cli.command {

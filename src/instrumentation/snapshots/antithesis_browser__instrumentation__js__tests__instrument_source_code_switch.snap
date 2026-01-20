@@ -1,5 +1,5 @@
 ---
-source: src/instrumentation.rs
+source: src/instrumentation/js.rs
 expression: code
 ---
 window.antithesis = window.antithesis || {

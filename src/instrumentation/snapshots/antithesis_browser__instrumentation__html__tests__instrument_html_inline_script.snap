@@ -1,8 +1,9 @@
 ---
-source: src/instrumentation.rs
-expression: code
+source: src/instrumentation/html.rs
+expression: output
 ---
-window.antithesis = window.antithesis || {
+<!DOCTYPE html><html><head></head><body>
+<script>window.antithesis = window.antithesis || {
     edges_previous: new Uint8Array(65536),
     edges_current: new Uint8Array(65536),
     previous: 0,
@@ -19,3 +20,7 @@ function example(a, b, c) {
 	})();
 }
 console.log(example(true, 1, 2));
+</script>
+
+
+</body></html>

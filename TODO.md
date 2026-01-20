@@ -5,12 +5,11 @@
   * "quiescence checker": debounce outbound network request events and DOM update events and trigger
     a new state once settled (as opposed to fixed timeouts after actions), with some max timeout too
     to avoid getting stuck
+  * pierce shadow roots and iframes in queries
     
 * electron
   * handle file pickers
 * instrumentation
-  * instrument inline scripts in html?
-    * see riotjs example in todomvc!
   * rewrite/produce sourcemaps (or at least drop the directives from instrumented sources, as
     they'll be incorrect
 

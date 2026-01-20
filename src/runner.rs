@@ -1,6 +1,6 @@
 use crate::browser::actions::{available_actions, BrowserAction, Timeout};
 use crate::browser::{random, BrowserOptions};
-use crate::instrumentation::EDGE_MAP_SIZE;
+use crate::instrumentation::js::EDGE_MAP_SIZE;
 use crate::invariant_violation;
 use crate::state_machine::{self, StateMachine};
 use crate::trace::Violation;

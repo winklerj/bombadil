@@ -19,6 +19,8 @@ use oxc_codegen::Codegen;
 use oxc_semantic::SemanticBuilder;
 use oxc_traverse::{traverse_mut, Traverse, TraverseCtx};
 
+use crate::instrumentation::source_id::SourceId;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstrumentationError {
     ParseErrors(Vec<oxc::diagnostics::OxcDiagnostic>),
@@ -45,9 +47,6 @@ impl fmt::Display for InstrumentationError {
 }
 
 pub type InstrumentationResult<T> = Result<T, InstrumentationError>;
-
-#[derive(Copy, Clone)]
-pub struct SourceId(pub u64);
 
 pub const NAMESPACE: &'static str = "antithesis";
 

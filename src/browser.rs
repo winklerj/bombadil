@@ -16,7 +16,6 @@ use log;
 use oxc::span::SourceType;
 use serde_json as json;
 use std::collections::HashMap;
-use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -32,6 +31,7 @@ use url::Url;
 
 use crate::browser::actions::BrowserAction;
 use crate::browser::state::{BrowserState, ConsoleEntry, Exception};
+use crate::instrumentation::source_id::SourceId;
 use crate::{instrumentation, state_machine};
 
 pub mod actions;
@@ -233,7 +233,7 @@ impl Browser {
             origin: origin.clone(),
         };
 
-        instrument_coverage(page.clone()).await?;
+        instrument_js_coverage(page.clone()).await?;
 
         let browser_events = browser
             .event_listener::<target::EventTargetDestroyed>()
@@ -901,13 +901,19 @@ async fn find_page(browser: &mut chromiumoxide::Browser) -> Result<Page> {
     bail!("coulnd't find an existing page to use");
 }
 
-async fn instrument_coverage(page: Arc<Page>) -> Result<()> {
+async fn instrument_js_coverage(page: Arc<Page>) -> Result<()> {
     page.execute(
         fetch::EnableParams::builder()
             .pattern(
                 fetch::RequestPattern::builder()
                     .request_stage(fetch::RequestStage::Response)
                     .resource_type(network::ResourceType::Script)
+                    .build(),
+            )
+            .pattern(
+                fetch::RequestPattern::builder()
+                    .request_stage(fetch::RequestStage::Response)
+                    .resource_type(network::ResourceType::Document)
                     .build(),
             )
             .build(),
@@ -920,11 +926,6 @@ async fn instrument_coverage(page: Arc<Page>) -> Result<()> {
     let _ = spawn(async move {
         let intercept =
             async |event: &fetch::EventRequestPaused| -> Result<()> {
-                assert!(
-                    event.resource_type == network::ResourceType::Script,
-                    "should only intercept script resources"
-                );
-
                 // Any non-200 upstream response is forwarded as-is.
                 if let Some(status) = event.response_status_code
                     && status != 200
@@ -972,12 +973,27 @@ async fn instrument_coverage(page: Arc<Page>) -> Result<()> {
                 };
 
                 let source_id = source_id(headers, &body);
-                let body_instrumented =
-                    instrumentation::instrument_source_code(
+
+                let body_instrumented = if event.resource_type
+                    == network::ResourceType::Script
+                {
+                    instrumentation::js::instrument_source_code(
                         source_id,
                         &body,
-                        SourceType::cjs(),
-                    )?;
+                        // As we can't know if the script is an ES module or a regular script,
+                        // we use this source type to let the parser decide.
+                        SourceType::unambiguous(),
+                    )?
+                } else if event.resource_type == network::ResourceType::Document
+                {
+                    instrumentation::html::instrument_inline_scripts(
+                        source_id, &body,
+                    )?
+                } else {
+                    bail!(
+                        "should only intercept script and document resources, but got {:?}", event.resource_type
+                    );
+                };
 
                 page.execute(
                     fetch::FulfillRequestParams::builder()
@@ -999,7 +1015,7 @@ async fn instrument_coverage(page: Arc<Page>) -> Result<()> {
                 )
                 .await
                 .context("failed fulfilling request")?;
-                log::info!(
+                log::debug!(
                     "intercepted and instrumented request: {}",
                     event.request.url
                 );
@@ -1016,15 +1032,10 @@ async fn instrument_coverage(page: Arc<Page>) -> Result<()> {
 }
 
 /// Calculate source ID from etag or body.
-fn source_id(
-    headers: HashMap<String, String>,
-    body: &str,
-) -> instrumentation::SourceId {
-    let mut hasher = DefaultHasher::new();
+fn source_id(headers: HashMap<String, String>, body: &str) -> SourceId {
     if let Some(etag) = headers.get("etag") {
-        etag.hash(&mut hasher);
+        SourceId::hash(etag)
     } else {
-        body.hash(&mut hasher);
-    };
-    instrumentation::SourceId(hasher.finish())
+        SourceId::hash(body)
+    }
 }
