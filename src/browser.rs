@@ -738,18 +738,17 @@ async fn process_event(
             InnerState::Navigating
         }
         (state, InnerEvent::FrameNavigated(frame_id, navigation_type)) => {
+            // Track all nodes.
+            context
+                .page
+                .execute(
+                    dom::GetDocumentParams::builder()
+                        .depth(-1)
+                        .pierce(true)
+                        .build(),
+                )
+                .await?;
             if frame_id == context.frame_id {
-                // Track all nodes.
-                context
-                    .page
-                    .execute(
-                        dom::GetDocumentParams::builder()
-                            .depth(-1)
-                            .pierce(false) // not through iframes and shadow roots
-                            .build(),
-                    )
-                    .await?;
-
                 match navigation_type {
                     NavigationType::Navigation => InnerState::Loading(vec![]),
                     // Navigating history with bfcache doesn't yield a "loaded"
