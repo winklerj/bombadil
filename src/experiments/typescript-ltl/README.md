@@ -1,4 +1,10 @@
-# bombadil
+# Specification Language
+
+This is a sketch of a specification language for Bombadil, using TypeScript or
+JavaScript modules. So far it's not integrated, only a lone experiment to try
+out different designs.
+
+## Tests
 
 To install dependencies:
 
@@ -6,10 +12,8 @@ To install dependencies:
 bun install
 ```
 
-To run:
+To run tests:
 
 ```bash
-bun run 
+bun test . 
 ```
-
-This project was created using `bun init` in bun v1.3.3. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
