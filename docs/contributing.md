@@ -18,8 +18,9 @@ See debug logs:
 RUST_LOG=bombadil=debug cargo run -- test https://example.com --headless
 ```
 
-There's also VSCode launch configs for debugging with codelldb. These have only
-been tested from `nvim-dap`, though.
+There's also [VSCode launch configs](development/launch.json) for debugging
+with codelldb. These have only been tested from `nvim-dap`, though. Put that
+in `.vscode/launch.json` and modify at will.
 
 ## Running in podman
 
