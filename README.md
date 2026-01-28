@@ -63,6 +63,29 @@ exit, for instance when running in CI, run with `--exit-on-violation`:
 bombadil test --exit-on-violation https://example.com
 ```
 
+## Install
+
+So far there's not a lot options for installing Bombadil other than using Nix.
+That's going to change though! We want to supply:
+
+* statically linked executables, which you can just download 
+* Docker images
+* a GitHub Action, ready to be used in your CI configuration
+
+But for now, your best bet is either running it through Nix, like:
+
+```
+nix run github:antithesishq/bombadil
+```
+
+Or setting up the [developer environment](docs/contributing.md) and compiling
+it with Cargo:
+
+```
+nix develop
+cargo build --release
+```
+
 ## More Resources
 
 * [Contributing](docs/contributing.md): if you want to hack on it
