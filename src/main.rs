@@ -7,6 +7,7 @@ use tempfile::TempDir;
 use bombadil::{
     browser::{BrowserOptions, DebuggerOptions, Emulation, LaunchOptions},
     runner::{Runner, RunnerOptions},
+    specification::{render::render_violation, verifier::Specification},
     trace::writer::TraceWriter,
 };
 
@@ -20,6 +21,7 @@ struct CLI {
 #[derive(Args)]
 struct TestSharedOptions {
     origin: Origin,
+    specification_file: Option<PathBuf>,
     #[arg(long)]
     output_path: Option<PathBuf>,
     #[arg(long)]
@@ -137,6 +139,20 @@ async fn test(
     browser_options: BrowserOptions,
     debugger_options: DebuggerOptions,
 ) -> Result<()> {
+    // Load a user-provided specification, or use the defaults provided by Bombadil.
+    let specification = if let Some(path) = &shared_options.specification_file {
+        log::info!("loading specification from file: {}", path.display());
+        Specification::from_path(path.as_path()).await?
+    } else {
+        log::info!("using default specification");
+        Specification::from_string(
+            r#"
+                export * from "bombadil/defaults";
+            "#,
+            PathBuf::from("default_spec.js").as_path(),
+        )?
+    };
+
     let output_path = match shared_options.output_path {
         Some(path) => path,
         None => TempDir::with_prefix("states_")?.keep().to_path_buf(),
@@ -144,6 +160,7 @@ async fn test(
 
     let runner = Runner::new(
         shared_options.origin.url,
+        specification,
         RunnerOptions {
             stop_on_violation: shared_options.exit_on_violation,
         },
@@ -160,15 +177,22 @@ async fn test(
                 Ok(Some(bombadil::runner::RunEvent::NewState {
                     state,
                     last_action,
-                    violation,
+                    violations,
                 })) => {
-                    writer.write(last_action, state, violation.clone()).await?;
+                    let has_violations = !violations.is_empty();
 
-                    if let Some(violation) = violation {
-                        log::error!("violation: {}", violation);
-                        if shared_options.exit_on_violation {
-                            break Ok(Some(2));
-                        }
+                    for violation in &violations {
+                        log::error!(
+                            "violation of property `{}`:\n{}",
+                            violation.name,
+                            render_violation(&violation.violation)
+                        );
+                    }
+
+                    writer.write(last_action, state, violations).await?;
+
+                    if has_violations && shared_options.exit_on_violation {
+                        break Ok(Some(2));
                     }
                 }
                 Ok(None) => break Ok(None),

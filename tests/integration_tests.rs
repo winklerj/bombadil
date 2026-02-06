@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use axum::Router;
-use std::{fmt::Display, sync::Once, time::Duration};
+use std::{fmt::Display, path::PathBuf, sync::Once, time::Duration};
 use tempfile::TempDir;
 use tokio::sync::Semaphore;
 use tower_http::services::ServeDir;
@@ -12,6 +12,7 @@ use bombadil::{
         Emulation, LaunchOptions,
     },
     runner::{RunEvent, Runner, RunnerOptions},
+    specification::{render::render_violation, verifier::Specification},
 };
 
 enum Expect {
@@ -94,8 +95,15 @@ async fn run_browser_test(name: &str, expect: Expect, timeout: Duration) {
         Url::parse(&format!("http://localhost:{}/{}", port, name,)).unwrap();
     let user_data_directory = TempDir::new().unwrap();
 
+    let default_specification = Specification::from_string(
+        r#"export * from "bombadil/defaults";"#,
+        PathBuf::from("fake.ts").as_path(),
+    )
+    .unwrap();
+
     let runner = Runner::new(
         origin,
+        default_specification,
         RunnerOptions {
             stop_on_violation: true,
         },
@@ -123,9 +131,19 @@ async fn run_browser_test(name: &str, expect: Expect, timeout: Duration) {
     let result = async {
         loop {
             match events.next().await {
-                Ok(Some(RunEvent::NewState { violation, .. })) => {
-                    if let Some(violation) = violation {
-                        break Err(anyhow!("violation: {}", violation));
+                Ok(Some(RunEvent::NewState { violations, .. })) => {
+                    if !violations.is_empty() {
+                        break Err(anyhow!(
+                            "violations:\n\n{}",
+                            violations
+                                .iter()
+                                .map(|violation| format!(
+                                    "{}:\n{}\n\n",
+                                    violation.name,
+                                    render_violation(&violation.violation)
+                                ))
+                                .collect::<String>()
+                        ));
                     }
                 }
                 Ok(None) => break events.shutdown().await,
@@ -180,7 +198,9 @@ async fn test_console_error() {
     run_browser_test(
         "console-error",
         Expect::Error {
-            substring: "oh no you pressed too much",
+            // TODO: restore assertion to "oh no you pressed too much" when we print relevant
+            // cells again
+            substring: "no_console_errors",
         },
         Duration::from_secs(10),
     )
@@ -192,7 +212,7 @@ async fn test_links() {
     run_browser_test(
         "links",
         Expect::Error {
-            substring: "got 404 at localhost",
+            substring: "no_http_error_codes",
         },
         Duration::from_secs(5),
     )
@@ -204,7 +224,9 @@ async fn test_uncaught_exception() {
     run_browser_test(
         "uncaught-exception",
         Expect::Error {
-            substring: "oh no you pressed too much",
+            // TODO: restore assertion to "oh no you pressed too much" when we print relevant
+            // cells again
+            substring: "no_uncaught_exceptions",
         },
         Duration::from_secs(10),
     )
@@ -216,7 +238,9 @@ async fn test_unhandled_promise_rejection() {
     run_browser_test(
         "unhandled-promise-rejection",
         Expect::Error {
-            substring: "oh no you pressed too much",
+            // TODO: restore assertion to "oh no you pressed too much" when we print relevant
+            // cells again
+            substring: "no_unhandled_promise_rejections",
         },
         Duration::from_secs(10),
     )
