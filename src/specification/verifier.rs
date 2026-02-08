@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::{collections::HashMap, rc::Rc};
 
+use crate::specification::ltl::Syntax;
 use crate::specification::module_loader::transpile;
 use crate::specification::result::Result;
 use crate::specification::{ltl, module_loader::load_modules};
@@ -118,15 +119,14 @@ impl Verifier {
         let mut properties: HashMap<String, Property> = HashMap::new();
         for (key, value) in specification_exports.iter() {
             if value.instance_of(&bombadil_exports.formula, &mut context)? {
+                let syntax =
+                    Syntax::from_value(value, &bombadil_exports, &mut context)?;
+                let formula = syntax.nnf();
                 properties.insert(
                     key.to_string(),
                     Property {
                         name: key.to_string(),
-                        state: PropertyState::Initial(Formula::from_value(
-                            value,
-                            &bombadil_exports,
-                            &mut context,
-                        )?),
+                        state: PropertyState::Initial(formula),
                     },
                 );
             } else if let PropertyKey::Symbol(symbol) = key
@@ -330,6 +330,34 @@ mod tests {
                 "s => s.bar",
             ]
         );
+    }
+
+    #[test]
+    fn test_property_evaluation_not() {
+        let mut verifier = verifier(
+            r#"
+            import { extract, now } from "bombadil";
+            
+            const foo = extract((state) => state.foo);
+
+            export const my_prop = now(() => foo.current).not();
+            "#,
+        );
+
+        let extractors = verifier.extractors().unwrap();
+        let extractor_foo_id = extractors.first().unwrap().0;
+
+        let time = SystemTime::UNIX_EPOCH
+            .checked_add(Duration::from_millis(0))
+            .unwrap();
+
+        let results = verifier
+            .step(vec![(extractor_foo_id, json::json!(false))], time)
+            .unwrap();
+
+        let (name, value) = results.first().unwrap();
+        assert_eq!(*name, "my_prop");
+        assert!(matches!(value, ltl::Value::True));
     }
 
     #[test]
@@ -540,6 +568,52 @@ mod tests {
     }
 
     #[test]
+    fn test_property_evaluation_always_bounded() {
+        let mut verifier = verifier(
+            r#"
+            import { extract, always } from "bombadil";
+            
+            const foo = extract((state) => state.foo);
+
+            export const my_prop = always(() => foo.current < 4).within(3, "milliseconds");
+            "#,
+        );
+
+        let extractor_id =
+            verifier.extractors().unwrap().iter().next().unwrap().0;
+
+        let time_at = |i: u64| {
+            SystemTime::UNIX_EPOCH
+                .checked_add(Duration::from_millis(i))
+                .unwrap()
+        };
+
+        for i in 0..10 {
+            let time = time_at(i);
+            let results = verifier
+                .step(vec![(extractor_id, json::json!(i))], time)
+                .unwrap();
+
+            let (name, value) = results.iter().next().unwrap();
+            assert_eq!(*name, "my_prop");
+
+            if i < 4 {
+                match value {
+                    ltl::Value::Residual(residual) => {
+                        match ltl::stop_default(residual, time) {
+                            Some(ltl::StopDefault::True) => {}
+                            _ => panic!("should have a true stop default"),
+                        }
+                    }
+                    other => panic!("should be residual but was: {:?}", other),
+                }
+            } else {
+                assert!(matches!(value, ltl::Value::True));
+            }
+        }
+    }
+
+    #[test]
     fn test_property_evaluation_eventually() {
         let mut verifier = verifier(
             r#"
@@ -547,7 +621,7 @@ mod tests {
             
             const foo = extract((state) => state.foo);
 
-            export const my_prop = eventually(() => foo.current === 9).within(5, "seconds");
+            export const my_prop = eventually(() => foo.current === 9);
             "#,
         );
 
@@ -581,6 +655,52 @@ mod tests {
                     }
                     _ => panic!("should be residual"),
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn test_property_evaluation_eventually_bounded() {
+        let mut verifier = verifier(
+            r#"
+            import { extract, eventually } from "bombadil";
+            
+            const foo = extract((state) => state.foo);
+
+            export const my_prop = eventually(() => foo.current === 9).within(3, "milliseconds");
+            "#,
+        );
+
+        let extractor_id =
+            verifier.extractors().unwrap().iter().next().unwrap().0;
+
+        let time_at = |i: u64| {
+            SystemTime::UNIX_EPOCH
+                .checked_add(Duration::from_millis(i))
+                .unwrap()
+        };
+
+        for i in 0..10 {
+            let time = time_at(i);
+            let results = verifier
+                .step(vec![(extractor_id, json::json!(i))], time)
+                .unwrap();
+
+            let (name, value) = results.iter().next().unwrap();
+            assert_eq!(*name, "my_prop");
+
+            if i < 4 {
+                match value {
+                    ltl::Value::Residual(residual) => {
+                        match ltl::stop_default(residual, time) {
+                            Some(ltl::StopDefault::False(_)) => {}
+                            _ => panic!("should have a false stop default"),
+                        }
+                    }
+                    other => panic!("should be residual but was: {:?}", other),
+                }
+            } else {
+                assert!(matches!(value, ltl::Value::False(_)));
             }
         }
     }

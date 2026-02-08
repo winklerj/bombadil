@@ -55,12 +55,30 @@ impl<'a> std::fmt::Display for RenderedViolation<'a> {
                 violation,
                 subformula,
                 start,
+                end: None,
                 time,
             } => {
                 write!(
                     f,
                     "as of {}ms, it should always be the case that\n\n{}\n\nbut at {}ms\n\n{}",
                     time_to_ms(start),
+                    RenderedFormula((*subformula).as_ref()),
+                    time_to_ms(time),
+                    RenderedViolation(violation),
+                )?;
+            }
+            Violation::Always {
+                violation,
+                subformula,
+                start,
+                end: Some(end),
+                time,
+            } => {
+                write!(
+                    f,
+                    "as of {}ms and until {}ms, it should alwaays be the case that\n\n{}\n\nbut at {}ms\n\n{}",
+                    time_to_ms(start),
+                    time_to_ms(end),
                     RenderedFormula((*subformula).as_ref()),
                     time_to_ms(time),
                     RenderedViolation(violation),
@@ -76,9 +94,14 @@ struct RenderedFormula<'a>(&'a Formula<PrettyFunction>);
 impl<'a> std::fmt::Display for RenderedFormula<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.0 {
-            Formula::True { pretty } => write!(f, "{}", pretty),
-            Formula::False { pretty } => write!(f, "{}", pretty),
-            Formula::Contextful(function) => write!(f, "{}", function),
+            Formula::Pure { value: _, pretty } => write!(f, "{}", pretty),
+            Formula::Thunk { function, negated } => {
+                if *negated {
+                    write!(f, "not({})", function)
+                } else {
+                    write!(f, "{}", function)
+                }
+            }
             Formula::And(left, right) => {
                 write!(
                     f,
@@ -106,15 +129,26 @@ impl<'a> std::fmt::Display for RenderedFormula<'a> {
             Formula::Next(formula) => {
                 write!(f, "next({})", RenderedFormula(formula))
             }
-            Formula::Always(formula) => {
+            Formula::Always(formula, None) => {
                 write!(f, "always({})", RenderedFormula(formula))
             }
-            Formula::Eventually(formula, duration) => {
+            Formula::Always(formula, Some(bound)) => {
+                write!(
+                    f,
+                    "always({}).within({}, \"milliseconds\")",
+                    RenderedFormula(formula),
+                    bound.as_millis()
+                )
+            }
+            Formula::Eventually(formula, None) => {
+                write!(f, "eventually({})", RenderedFormula(formula))
+            }
+            Formula::Eventually(formula, Some(bound)) => {
                 write!(
                     f,
                     "eventually({}).within({}, \"milliseconds\")",
                     RenderedFormula(formula),
-                    duration.as_millis()
+                    bound.as_millis()
                 )
             }
         }
