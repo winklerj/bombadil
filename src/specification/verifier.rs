@@ -1,10 +1,14 @@
 use std::path::{Path, PathBuf};
 use std::{collections::HashMap, rc::Rc};
 
-use crate::specification::ltl::Syntax;
+use crate::specification::js::{
+    module_exports, BombadilExports, Extractors, RuntimeFunction,
+};
 use crate::specification::module_loader::transpile;
 use crate::specification::result::Result;
+use crate::specification::syntax::Syntax;
 use crate::specification::{ltl, module_loader::load_modules};
+use boa_engine::JsValue;
 use boa_engine::{
     context::ContextBuilder, js_string, object::builtins::JsArray,
     property::PropertyKey, Context, JsString, Module, Source,
@@ -13,8 +17,6 @@ use oxc::span::SourceType;
 use serde_json as json;
 
 use crate::specification::{
-    bombadil_exports::{module_exports, BombadilExports},
-    extractors::Extractors,
     ltl::{Evaluator, Formula, Residual, Violation},
     module_loader::{load_bombadil_module, HybridModuleLoader},
     result::SpecificationError,
@@ -195,15 +197,31 @@ impl Verifier {
         &mut self,
         snapshots: Vec<(u64, json::Value)>,
         time: ltl::Time,
-    ) -> Result<Vec<(String, ltl::Value)>> {
+    ) -> Result<Vec<(String, ltl::Value<RuntimeFunction>)>> {
         self.extractors.update_from_snapshots(
             snapshots,
             time,
             &mut self.context,
         )?;
         let mut results = Vec::with_capacity(self.properties.len());
-        let mut evaluator =
-            Evaluator::new(&self.bombadil_exports, &mut self.context);
+
+        let context = &mut self.context;
+        let mut evaluate_thunk = |function: &RuntimeFunction,
+                                  negated: bool|
+         -> Result<Formula<RuntimeFunction>> {
+            let value =
+                function.object.call(&JsValue::undefined(), &[], context)?;
+            let syntax =
+                Syntax::from_value(&value, &self.bombadil_exports, context)?;
+            Ok((if negated {
+                Syntax::Not(Box::new(syntax))
+            } else {
+                syntax
+            })
+            .nnf())
+        };
+        let mut evaluator = Evaluator::new(&mut evaluate_thunk);
+
         for property in self.properties.values_mut() {
             let value = match &property.state {
                 PropertyState::Initial(formula) => {
@@ -251,10 +269,10 @@ pub struct Property {
 
 #[derive(Debug, Clone)]
 enum PropertyState {
-    Initial(Formula),
-    Residual(Residual),
+    Initial(Formula<RuntimeFunction>),
+    Residual(Residual<RuntimeFunction>),
     DefinitelyTrue,
-    DefinitelyFalse(Violation),
+    DefinitelyFalse(Violation<RuntimeFunction>),
 }
 
 #[cfg(test)]
@@ -263,6 +281,8 @@ mod tests {
         io::Write,
         time::{Duration, SystemTime},
     };
+
+    use crate::specification::stop::{stop_default, StopDefault};
 
     use super::*;
 
@@ -503,8 +523,8 @@ mod tests {
             } else {
                 match value {
                     ltl::Value::Residual(residual) => {
-                        match ltl::stop_default(residual, time) {
-                            Some(ltl::StopDefault::True) => {}
+                        match stop_default(residual, time) {
+                            Some(StopDefault::True) => {}
                             _ => panic!("should have a true stop default"),
                         }
                     }
@@ -556,8 +576,8 @@ mod tests {
             } else {
                 match value {
                     ltl::Value::Residual(residual) => {
-                        match ltl::stop_default(residual, time) {
-                            Some(ltl::StopDefault::True) => {}
+                        match stop_default(residual, time) {
+                            Some(StopDefault::True) => {}
                             _ => panic!("should have a true stop default"),
                         }
                     }
@@ -600,8 +620,8 @@ mod tests {
             if i < 4 {
                 match value {
                     ltl::Value::Residual(residual) => {
-                        match ltl::stop_default(residual, time) {
-                            Some(ltl::StopDefault::True) => {}
+                        match stop_default(residual, time) {
+                            Some(StopDefault::True) => {}
                             _ => panic!("should have a true stop default"),
                         }
                     }
@@ -648,8 +668,8 @@ mod tests {
             } else {
                 match value {
                     ltl::Value::Residual(residual) => {
-                        match ltl::stop_default(residual, time) {
-                            Some(ltl::StopDefault::False(_)) => {}
+                        match stop_default(residual, time) {
+                            Some(StopDefault::False(_)) => {}
                             _ => panic!("should have a false stop default"),
                         }
                     }
@@ -692,8 +712,8 @@ mod tests {
             if i < 4 {
                 match value {
                     ltl::Value::Residual(residual) => {
-                        match ltl::stop_default(residual, time) {
-                            Some(ltl::StopDefault::False(_)) => {}
+                        match stop_default(residual, time) {
+                            Some(StopDefault::False(_)) => {}
                             _ => panic!("should have a false stop default"),
                         }
                     }
