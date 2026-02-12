@@ -49,7 +49,7 @@ fn setup() {
 /// These tests are pretty heavy, and running too many parallel risks one browser get stuck and
 /// causing a timeout, so we limit parallelism.
 static TEST_SEMAPHORE: Semaphore = Semaphore::const_new(2);
-const TEST_TIMEOUT_SECONDS: u64 = 10;
+const TEST_TIMEOUT_SECONDS: u64 = 120;
 
 /// Run a named browser test with a given expectation.
 ///
@@ -64,6 +64,7 @@ const TEST_TIMEOUT_SECONDS: u64 = 10;
 async fn run_browser_test(name: &str, expect: Expect, timeout: Duration) {
     setup();
     let _permit = TEST_SEMAPHORE.acquire().await.unwrap();
+    log::info!("starting browser test");
     let app = Router::new().fallback_service(ServeDir::new("./tests"));
     let app_other = app.clone();
 
@@ -127,6 +128,7 @@ async fn run_browser_test(name: &str, expect: Expect, timeout: Duration) {
     .await
     .expect("run_test failed");
 
+    log::info!("starting runner");
     let mut events = runner.start();
 
     let result = async {
@@ -174,12 +176,14 @@ async fn run_browser_test(name: &str, expect: Expect, timeout: Duration) {
         }
     }
 
+    log::info!("starting timeout");
     let outcome = match tokio::time::timeout(timeout, result).await {
         Ok(Ok(())) => Outcome::Success,
         Ok(Err(error)) => Outcome::Error(error),
         Err(_elapsed) => Outcome::Timeout,
     };
 
+    log::info!("checking outcome");
     match (outcome, expect) {
         (Outcome::Error(error), Expect::Error { substring }) => {
             if !error.to_string().contains(substring) {
@@ -203,7 +207,7 @@ async fn test_console_error() {
             // cells again
             substring: "no_console_errors",
         },
-        Duration::from_secs(10),
+        Duration::from_secs(TEST_TIMEOUT_SECONDS),
     )
     .await;
 }
@@ -229,7 +233,7 @@ async fn test_uncaught_exception() {
             // cells again
             substring: "no_uncaught_exceptions",
         },
-        Duration::from_secs(10),
+        Duration::from_secs(TEST_TIMEOUT_SECONDS),
     )
     .await;
 }
@@ -243,19 +247,15 @@ async fn test_unhandled_promise_rejection() {
             // cells again
             substring: "no_unhandled_promise_rejections",
         },
-        Duration::from_secs(10),
+        Duration::from_secs(TEST_TIMEOUT_SECONDS),
     )
     .await;
 }
 
 #[tokio::test]
 async fn test_other_domain() {
-    run_browser_test(
-        "other-domain",
-        Expect::Success,
-        Duration::from_secs(TEST_TIMEOUT_SECONDS),
-    )
-    .await;
+    run_browser_test("other-domain", Expect::Success, Duration::from_secs(5))
+        .await;
 }
 
 #[tokio::test]
@@ -263,7 +263,7 @@ async fn test_action_within_iframe() {
     run_browser_test(
         "action-within-iframe",
         Expect::Success,
-        Duration::from_secs(TEST_TIMEOUT_SECONDS),
+        Duration::from_secs(5),
     )
     .await;
 }
@@ -330,7 +330,9 @@ async fn test_browser_lifecycle() {
         }
     }
 
-    browser.apply(BrowserAction::Reload).await.unwrap();
+    browser
+        .apply(BrowserAction::Reload, Duration::from_millis(500))
+        .unwrap();
 
     match browser.next_event().await.unwrap() {
         bombadil::browser::BrowserEvent::StateChanged(state) => {

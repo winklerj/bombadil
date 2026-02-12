@@ -54,6 +54,8 @@
         devShells = {
           default = pkgs.mkShell {
             CARGO_INSTALL_ROOT = "${toString ./.}/.cargo";
+            # override how chromiumoxide finds the chromium executable
+            CHROME = pkgs.lib.getExe pkgs.chromium;
             inputsFrom = [ self.packages.${system}.default ];
             buildInputs = with pkgs; [
               # Rust

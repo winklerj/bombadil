@@ -1,4 +1,4 @@
-use crate::browser::actions::{BrowserAction, Timeout, available_actions};
+use crate::browser::actions::{BrowserAction, available_actions};
 use crate::browser::{BrowserEvent, BrowserOptions, random};
 use crate::instrumentation::js::EDGE_MAP_SIZE;
 use crate::specification::verifier::Specification;
@@ -9,10 +9,9 @@ use serde_json as json;
 use std::cmp::max;
 use std::sync::Arc;
 use tokio::sync::{broadcast, oneshot};
-use tokio::time::timeout;
 use tokio::{select, spawn};
 
-use crate::browser::state::{BrowserState, Coverage, Exception};
+use crate::browser::state::{BrowserState, Coverage};
 use crate::browser::{Browser, DebuggerOptions};
 
 pub struct RunnerOptions {
@@ -130,7 +129,6 @@ impl Runner {
         mut shutdown: oneshot::Receiver<()>,
     ) -> anyhow::Result<()> {
         let mut last_action: Option<BrowserAction> = None;
-        let mut last_action_timeout = Timeout::from_secs(1);
         let mut edges = [0u8; EDGE_MAP_SIZE];
 
         let extractors = verifier.extractors().await?;
@@ -141,8 +139,8 @@ impl Runner {
                 _ = &mut shutdown => {
                     return Ok(())
                 },
-                event = timeout( last_action_timeout.to_duration(), browser.next_event() ) => match event {
-                    Ok(Some(event)) => match event {
+                event = browser.next_event() => match event {
+                    Some(event) => match event {
                         BrowserEvent::StateChanged(state) => {
                             // Step formulas and collect violations.
                             let snapshots = run_extractors(&state, &extractors).await?;
@@ -182,20 +180,15 @@ impl Runner {
 
                             let (action, timeout) = action;
                             log::info!("picked action: {:?}", action);
-                            browser.apply(action.clone()).await?;
+                            browser.apply(action.clone(), timeout.to_duration())?;
                             last_action = Some(action);
-                            last_action_timeout = timeout;
                         }
                         BrowserEvent::Error(error) => {
                             anyhow::bail!("state machine error: {}", error)
                         }
                     },
-                    Ok(None) => {
+                    None => {
                         anyhow::bail!("browser closed")
-                    }
-                    Err(_) => {
-                        log::debug!("timed out");
-                        browser.request_state().await;
                     }
                 }
             }
@@ -233,21 +226,6 @@ async fn run_extractors(
 ) -> anyhow::Result<Vec<(u64, json::Value)>> {
     let mut results = Vec::with_capacity(extractors.len());
 
-    let uncaught_exception =
-        if let Some(Exception::UncaughtException(e)) = &state.exception {
-            Some(e)
-        } else {
-            None
-        };
-
-    let unhandled_promise_rejection =
-        if let Some(Exception::UnhandledPromiseRejection(e)) = &state.exception
-        {
-            Some(e)
-        } else {
-            None
-        };
-
     let console_entries: Vec<json::Value> = state
         .console_entries
         .iter()
@@ -262,8 +240,7 @@ async fn run_extractors(
 
     let state_partial = json::json!({
         "errors": {
-            "uncaught_exception": uncaught_exception,
-            "unhandled_promise_rejection": unhandled_promise_rejection,
+            "uncaught_exceptions": &state.exceptions,
         },
         "console": console_entries
 

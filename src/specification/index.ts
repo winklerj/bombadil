@@ -195,8 +195,15 @@ export interface State {
   document: HTMLDocument;
   window: Window;
   errors: {
-    uncaught_exception: JSON;
-    unhandled_promise_rejection: JSON;
+    uncaught_exceptions: {
+      text: string;
+      line: number;
+      column: number;
+      url: string | null;
+      stacktrace:
+        | { name: string; line: number; column: number; url: string }[]
+        | null;
+    }[];
   };
   console: ConsoleEntry[];
 }
