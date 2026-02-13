@@ -46,14 +46,6 @@ podman run -ti localhost/bombadil_docker:latest <SOME_URL>
 cargo test --test integration_tests
 ```
 
-### Changing dependencies
-
-After any changes to dependencies in Cargo.toml:
-
-```bash
-crate2nix generate -o nix/Cargo.nix
-```
-
 ## Releasing
 
 1. Make sure you're on branch `main` and in a clean state
