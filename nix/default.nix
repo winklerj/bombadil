@@ -67,6 +67,16 @@ in
       CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
       CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
     }
+    // lib.optionalAttrs stdenv.isDarwin {
+      # Rewrite Nix store dylib references to system paths so the binary
+      # is distributable outside of Nix.
+      postFixup = ''
+        for nixlib in $(otool -L $out/bin/bombadil | grep /nix/store | awk '{print $1}'); do
+          base=$(basename "$nixlib")
+          install_name_tool -change "$nixlib" "/usr/lib/$base" $out/bin/bombadil
+        done
+      '';
+    }
   );
 
   types = callPackage ./types.nix { inherit src; };
