@@ -57,26 +57,30 @@ crate2nix generate -o nix/Cargo.nix
 ## Releasing
 
 1. Make sure you're on branch `main` and in a clean state
-1. Bump the version in `Cargo.toml` (according to Semver)
+1. Create a new branch `release/x.y.z` (with the actual version)
+1. Bump the version in `Cargo.toml`
 1. Run:
 
    ```
-   export VERSION_PREV=$(git tag --sort=-v:refname -l "v*" | sed -n '2p')
+   export VERSION_PREV=$(git tag --sort=-v:refname -l "v*" | sed -n '1p')
    export VERSION_NEW=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
    ```
 
 1. Run:
 
    ```
-   git log v${VERSION_PREV)v${VERSION_NEW} --oneline
+   (echo "## ${VERSION_NEW}" && echo "" && git log v${VERSION_PREV}..HEAD --oneline | sed 's/^[a-z0-9]* /* /' && echo "") \
+       | cat - CHANGELOG.md > tmp.md && mv tmp.md CHANGELOG.md
    ```
 
-   Rewrite the commit log into something meaningful, putting it at the top of
-   `CHANGELOG.md`.
+   Open up `CHANGELOG.md` and rewrite the commit log into something meaningful.
 
-1. `git commit -am "v${VERSION_NEW}"`
-1. `git tag "v${VERSION_NEW}"`
-1. `git push origin main --tags`
+1. `git commit -m "release v${VERSION_NEW}"`
+1. Push to GitHub and create a pull request. Once reviewed and merged to continue with:
+1. `git fetch`
+1. `git tag -am "v${VERSION_NEW}" <SQUASH COMMIT FROM PULL REQUEST>`
+1. `git push origin "v${VERSION_NEW}"`
 
-The release workflow will then build binaries, create a GitHub release, and
-publish the types package to NPM.
+The release workflow will then build binaries, publish the types package to
+NPM, and create a **draft** GitHub release. Go to the GitHub releases page,
+review the draft, and publish it.
