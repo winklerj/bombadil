@@ -36,6 +36,7 @@
         packages = {
           default = bombadil.bin;
           types = bombadil.types;
+        } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
           docker = pkgs.callPackage ./nix/docker.nix { bombadil = self.packages.${system}.default; };
         };
 
@@ -48,14 +49,14 @@
         };
 
         checks = {
-          inherit (bombadil) tests clippy fmt;
+          inherit (bombadil) clippy fmt;
+        } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          inherit (bombadil) tests;
         };
 
         devShells = {
-          default = pkgs.mkShell {
+          default = pkgs.mkShell ({
             CARGO_INSTALL_ROOT = "${toString ./.}/.cargo";
-            # override how chromiumoxide finds the chromium executable
-            CHROME = pkgs.lib.getExe pkgs.chromium;
             inputsFrom = [ self.packages.${system}.default ];
             buildInputs = with pkgs; [
               # Rust
@@ -76,11 +77,14 @@
               esbuild
               bun
               biome
-
+            ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
               # Runtime
-              chromium
+              pkgs.chromium
             ];
-          };
+          } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+            # override how chromiumoxide finds the chromium executable
+            CHROME = pkgs.lib.getExe pkgs.chromium;
+          });
         };
       }
     );
